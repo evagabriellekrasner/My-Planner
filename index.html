@@ -4,6 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Planner</title>
+<link rel="manifest" href="manifest.webmanifest">
+<meta name="theme-color" content="#9a87b5">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Planner">
+<meta name="apple-mobile-web-app-status-bar-style" content="default">
+<link rel="apple-touch-icon" href="apple-touch-icon.png">
+<link rel="icon" href="icon-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap">
 <style>
@@ -579,7 +587,7 @@ const PRELOADED = {};
 class CloudError extends Error { constructor(kind, detail){ super(kind); this.kind = kind; this.detail = detail; } }
 const DB_NAMES = ['default', '(default)'];   // Eva's Firestore database is named "default"
 let dbName = DB_NAMES[0];
-const cloudUrl = key => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${encodeURIComponent(dbName)}/documents/planners/${key}?key=${FIREBASE_CONFIG.apiKey}`;
+const cloudUrl = keyAndMask => { const [key, mask] = keyAndMask.split('?mask='); return `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${encodeURIComponent(dbName)}/documents/planners/${key}?key=${FIREBASE_CONFIG.apiKey}` + (mask ? `&updateMask.fieldPaths=${mask}` : ''); };
 async function cloudCall(key, opts={}){
   try { return await cloudCallOnce(key, opts); }
   catch(e){
@@ -603,7 +611,14 @@ async function cloudCallOnce(key, opts={}){
   throw new CloudError('server', res.status+' '+msg);
 }
 const cloudGet = async key => { const d = await cloudCall(key); return d && d.fields && d.fields.json ? JSON.parse(d.fields.json.stringValue) : null; };
-const cloudSet = (key, data) => cloudCall(key, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fields:{json:{stringValue: JSON.stringify(data)}}})});
+const cloudSet = (key, data, full) => cloudCall(key + (full ? '' : '?mask=json'), {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fields:{json:{stringValue: JSON.stringify(data)}}})});
+// this device's push subscription lives in its own field ("push") so planner saves don't erase it
+async function cloudPush(key, update){
+  const d = await cloudCall(key);
+  let push = {subs:[]}; try { if(d && d.fields && d.fields.push) push = JSON.parse(d.fields.push.stringValue); } catch {}
+  push = update(push) || push;
+  await cloudCall(key + '?mask=push', {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fields:{push:{stringValue: JSON.stringify(push)}}})});
+}
 function cloudMessage(e){
   const k = e && e.kind;
   if(k==='timeout' || k==='blocked') return 'Can’t reach the planner’s database. If you’re on a school device or school Wi-Fi, it may be blocked. Try another device or network.';
@@ -653,6 +668,8 @@ function useData(d, name, key){
 function startApp(){
   document.getElementById('loginRoot').replaceChildren();
   document.getElementById('app').hidden = false;
+  const pg = location.hash.slice(1); if(['today','calendar','planner','study','settings'].includes(pg)) state.page = pg;
+  if(state.prefs.notifyOn && notifSupported() && Notification.permission==='granted') enablePush(true).catch(()=>{});
   render();
 }
 function logout(){
@@ -712,6 +729,7 @@ function showLogin(mode){
   draw();
 }
 
+window.addEventListener('hashchange', ()=>{ const pg = location.hash.slice(1); if(state.user && ['today','calendar','planner','study','settings'].includes(pg)) goPage(pg); });
 async function init(){
   const t = todayIso(); state.calMonth = t.slice(0,7); state.calDay = t; state.q.date = t;
   document.getElementById('todayLbl').textContent = longDay(t);
@@ -1119,12 +1137,43 @@ function applyMode(){ const r=document.documentElement; const m=state.prefs.mode
 const notifSupported = () => typeof Notification !== 'undefined';
 function firedSet(){ try { return new Set(JSON.parse(LS.get('planner:fired:'+(state.user&&state.user.key))||'[]')); } catch { return new Set(); } }
 function markFired(set){ LS.set('planner:fired:'+(state.user&&state.user.key), JSON.stringify([...set].slice(-400))); }
-function notify(title, body, tag){
-  try { const n = new Notification(title, {body, tag, icon:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#9a87b5"/><path d="M18 34l9 9 19-21" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>')});
-    n.onclick = () => { window.focus(); goPage('today'); n.close(); }; } catch {}
+const VAPID_PUBLIC = 'BM9UBkIGPcAcChqinnK1s99uGsHSixmKiE6P5ZoqMUYY2U99H6Dve-YA2TyVdQC8HR9S3QAwOPlyA7JFm8UOFmc';
+let swReg = null;
+async function getSW(){
+  if(swReg) return swReg;
+  if(!('serviceWorker' in navigator) || location.protocol!=='https:') return null;
+  try { swReg = await navigator.serviceWorker.register('sw.js'); await navigator.serviceWorker.ready; return swReg; } catch { return null; }
+}
+if('serviceWorker' in navigator){
+  getSW();
+  navigator.serviceWorker.addEventListener('message', e => { if(e.data && e.data.goPage && state.user) goPage(e.data.goPage); });
+}
+const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform==='MacIntel' && navigator.maxTouchPoints>1);
+const isInstalled = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
+const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && notifSupported();
+async function notify(title, body, tag){
+  const opts = {body, tag, icon:'icon-192.png', badge:'icon-192.png', data:{page:'today'}};
+  try { const reg = await getSW(); if(reg){ await reg.showNotification(title, opts); return true; } } catch {}
+  try { const n = new Notification(title, opts); n.onclick = () => { window.focus(); goPage('today'); n.close(); }; return true; } catch { return false; }
+}
+function b64uToBytes(s){ const pad='='.repeat((4-s.length%4)%4); const b=atob((s+pad).replace(/-/g,'+').replace(/_/g,'/')); return Uint8Array.from(b, c=>c.charCodeAt(0)); }
+// subscribe this device so reminders arrive even when the planner is closed
+async function enablePush(quiet){
+  const reg = await getSW(); if(!reg || !('PushManager' in window)) return false;
+  let sub = await reg.pushManager.getSubscription();
+  if(!sub) sub = await reg.pushManager.subscribe({userVisibleOnly:true, applicationServerKey: b64uToBytes(VAPID_PUBLIC)});
+  const j = sub.toJSON(); let tz = 'America/Chicago'; try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || tz; } catch {}
+  if(FIREBASE_CONFIG && state.user) await cloudPush(state.user.key, p => { p.subs = (p.subs||[]).filter(x=>x.endpoint!==j.endpoint); p.subs.push({endpoint:j.endpoint, keys:j.keys, added:Date.now()}); p.tz = tz; return p; });
+  return true;
+}
+async function disablePush(){
+  const reg = await getSW(); const sub = reg && await reg.pushManager.getSubscription(); if(!sub) return;
+  const ep = sub.endpoint;
+  if(FIREBASE_CONFIG && state.user) await cloudPush(state.user.key, p => { p.subs = (p.subs||[]).filter(x=>x.endpoint!==ep); return p; }).catch(()=>{});
 }
 function checkReminders(){
   if(!state.user || !state.prefs.notifyOn || !notifSupported() || Notification.permission!=='granted') return;
+  // (the reminder service sends these too; the same tag means a phone only shows one)
   const now = new Date(), t = iso(now), mins = now.getHours()*60 + now.getMinutes();
   const fired = firedSet(); let changed = false;
   const fire = (key, title, body) => { if(fired.has(key)) return; fired.add(key); changed = true; notify(title, body, key); };
@@ -1192,10 +1241,11 @@ function downloadIcs(){
 async function changePasscode(newPin){
   const oldKey = state.user.key, newKey = await keyFor(state.user.name, newPin);
   if(newKey===oldKey) return 'That’s already your passcode.';
-  try { if(FIREBASE_CONFIG){ if(await cloudGet(newKey)) return 'Pick a different passcode.'; await cloudSet(newKey, snapshotData()); await cloudSet(oldKey, {deleted:true}); } }
+  try { if(FIREBASE_CONFIG){ if(await cloudGet(newKey)) return 'Pick a different passcode.'; await cloudSet(newKey, snapshotData()); await cloudSet(oldKey, {deleted:true}, true); } }
   catch(e){ return cloudMessage(e); }
   LS.set('planner:'+newKey, JSON.stringify(snapshotData())); LS.del('planner:'+oldKey);
   state.user.key = newKey; LS.set('planner:session', JSON.stringify({key:newKey, name:state.user.name}));
+  if(state.prefs.notifyOn) enablePush(true).catch(()=>{});
   return null;
 }
 function renderSettings(){
@@ -1212,15 +1262,29 @@ function renderSettings(){
   const start = h('select',{id:'setStart',class:'set-in',onchange:e=>setP('start',e.target.value)}, ...[['today','Today'],['calendar','Calendar'],['planner','Classes'],['study','Study']].map(([k,l])=>h('option',{value:k,selected:(P.start||'today')===k||null},l)));
 
   const perm = notifSupported() ? Notification.permission : 'unsupported';
+  const needsInstall = isIOS() && !isInstalled();
   const notifOn = P.notifyOn && perm==='granted';
   const notifSwitch = sw('setNotify', notifOn, async v=>{
-    if(!v){ setP('notifyOn', false); return; }
-    if(!notifSupported()){ toast('This browser can’t show notifications.'); render(); return; }
+    if(!v){ setP('notifyOn', false); disablePush(); toast('Notifications off on this device'); return; }
+    if(needsInstall){ render(); toast('On iPhone, add My Planner to your Home Screen first (steps below).'); return; }
+    if(!notifSupported()){ render(); toast('This browser can’t show notifications. Try Chrome or Safari.'); return; }
     let res = Notification.permission;
     if(res==='default'){ try { res = await Notification.requestPermission(); } catch { res = 'denied'; } }
-    if(res==='granted'){ setP('notifyOn', true); notify('Reminders are on', 'You’ll get pop-ups like this while My Planner is open.', 'test'); }
-    else { P.notifyOn=false; persist(); render(); toast('Notifications are blocked. Allow them in your browser’s site settings (the icon left of the address).'); }
+    if(res!=='granted'){ P.notifyOn=false; persist(); render(); toast('Notifications are blocked. Allow them for this site in your browser or phone settings.'); return; }
+    setP('notifyOn', true);
+    let pushed = false; try { pushed = await enablePush(); } catch {}
+    await notify('Notifications are on', pushed ? 'You’ll get reminders on this device, even when My Planner is closed.' : 'You’ll get reminders while My Planner is open.', 'test');
   });
+  const testBtn = h('button',{class:'btn sm',onclick:async()=>{
+    if(!notifSupported() || Notification.permission!=='granted'){ toast('Turn notifications on first.'); return; }
+    const ok = await notify('Test from My Planner', 'If you can see this, notifications work on this device.', 'test'); if(!ok) toast('This browser didn’t show it. Check your notification settings.');
+  }},'Send a test');
+  const howTo = needsInstall
+    ? h('div',{class:'note'}, h('b',null,'On iPhone or iPad: '), 'tap the Share button (the square with an arrow) in Safari → “Add to Home Screen” → Add. Then open My Planner from your Home Screen, log in, and turn notifications on here.')
+    : perm==='denied' ? h('div',{class:'note'}, h('b',null,'Notifications are blocked. '), 'On a phone: Settings → Notifications (or your browser’s site settings) → allow My Planner. On a computer: click the icon left of the web address → Notifications → Allow. Then turn the switch on again.')
+    : (isIOS() || /Android/i.test(navigator.userAgent)) && !isInstalled()
+      ? h('div',{class:'note'}, h('b',null,'Tip: '), 'add My Planner to your Home Screen (browser menu → “Add to Home screen” or “Install app”) so it opens like an app.')
+      : null;
   const daily = h('input',{id:'setDaily',type:'time',class:'set-in',value:P.daily||'',onchange:e=>setP('daily', e.target.value)});
   const before = h('select',{id:'setBefore',class:'set-in',onchange:e=>setP('before', e.target.value)}, ...REMIND_OPTS.map(([v,l])=>h('option',{value:v,selected:String(P.before??'30')===v||null},l)));
 
@@ -1243,11 +1307,12 @@ function renderSettings(){
       row('Planner name', 'Shown at the top of the page.', nameIn),
       row('Open to', 'The page you see first.', start)),
     sec('Reminders', null,
-      row('Pop-up reminders', perm==='denied' ? 'Blocked by your browser. Allow notifications for this site in the browser’s site settings.' : 'Shows notifications on this device while My Planner is open in a tab.', notifSwitch),
+      row('Notifications on this device', 'Event reminders and a morning summary, even when the planner is closed. Turn it on separately on each phone or computer.', notifSwitch),
+      howTo,
+      notifOn ? row('Check it works', null, testBtn) : null,
       row('Morning summary', 'What’s due and what’s happening today.', daily),
       row('Default event reminder', 'Used for new events.', before),
-      h('div',{class:'note'}, h('b',null,'Want alerts on your phone, even when the planner is closed? '),
-        'Tap “+ Google Cal” on any event, or download your calendar file below and import it into Google Calendar (Settings → Import & export). Google Calendar will then remind you like any other event.'),
+      h('p',{class:'hint',style:'margin:4px 0'},'You can also put things in Google Calendar: tap “+ Google Cal” on an event, or import the calendar file below (Google Calendar → Settings → Import & export).'),
       row('Calendar file', 'Upcoming events, homework and tests, with reminders.', h('button',{class:'btn sm',onclick:downloadIcs},'Download .ics'))),
     sec('Backup', 'Keep a copy of your planner, or move one in.',
       row('Save a backup', null, h('button',{class:'btn sm',onclick:saveBackup},'Save backup')),
