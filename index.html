@@ -4,14 +4,14 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>My Planner</title>
-<link rel="manifest" href="manifest.webmanifest">
-<meta name="theme-color" content="#9a87b5">
+<link rel="manifest" id="manifestLink" href="manifest-a-berry.webmanifest">
+<meta name="theme-color" id="themeColor" content="#9a87b5">
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-title" content="Planner">
 <meta name="apple-mobile-web-app-status-bar-style" content="default">
-<link rel="apple-touch-icon" href="apple-touch-icon.png">
-<link rel="icon" href="icon-192.png">
+<link rel="apple-touch-icon" id="appleIcon" href="icons/a-berry-180.png">
+<link rel="icon" id="favIcon" href="icons/a-berry-192.png">
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Fredoka:wght@500;600;700&family=Nunito:wght@400;600;700;800&display=swap">
 <style>
@@ -493,7 +493,7 @@ const state = {
   mode:'loading', readOnly:false, slow:false, loaded:false,
   addingClass:false, newClass:'',
   q:{title:'', type:'homework', classId:null, date:null},
-  palette:'berry', page:'today', events:[], prefs:{mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30}, todos:[], todoDay:null, todoText:'',
+  palette:'berry', page:'today', events:[], prefs:{mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, icon:'a'}, todos:[], todoDay:null, todoText:'',
   plans:[], planAdd:null, planAddText:'', delArm:null,
   sp:{pick:null, classId:null, title:'', type:'test', date:null, days:3, tasks:[], taskText:''}
 };
@@ -660,7 +660,7 @@ function useData(d, name, key){
   state.user = {name: d.name || name, key};
   state.title = d.title || DEFAULT_TITLE; state.palette = d.theme || 'berry';
   state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[]; state.events = d.events||[];
-  state.prefs = {mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, ...(d.prefs||{})};
+  state.prefs = {mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, icon:'a', ...(d.prefs||{})};
   state.loaded = true; state.mode = 'local'; state.page = state.prefs.start || 'today';
   applyPalette(); applyMode();
 }
@@ -675,7 +675,7 @@ function startApp(){
 function logout(){
   LS.del('planner:session');
   state.user=null; state.classes=[]; state.items=[]; state.plans=[]; state.todos=[]; state.events=[];
-  delete document.documentElement.dataset.theme;
+  delete document.documentElement.dataset.theme; delete document.documentElement.dataset.palette; applyIcon();
   document.getElementById('app').hidden = true; showLogin('login');
 }
 function showLogin(mode){
@@ -1152,7 +1152,7 @@ const isIOS = () => /iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.p
 const isInstalled = () => window.navigator.standalone === true || (window.matchMedia && matchMedia('(display-mode: standalone)').matches);
 const pushSupported = () => 'serviceWorker' in navigator && 'PushManager' in window && notifSupported();
 async function notify(title, body, tag){
-  const opts = {body, tag, icon:'icon-192.png', badge:'icon-192.png', data:{page:'today'}};
+  const opts = {body, tag, icon: iconPath(192), badge: iconPath(192), data:{page:'today'}};
   try { const reg = await getSW(); if(reg){ await reg.showNotification(title, opts); return true; } } catch {}
   try { const n = new Notification(title, opts); n.onclick = () => { window.focus(); goPage('today'); n.close(); }; return true; } catch { return false; }
 }
@@ -1257,6 +1257,8 @@ function renderSettings(){
 
   const themes = h('div',{class:'themes',role:'group','aria-label':'Color theme'}, ...PALETTES.map(([k,l,c])=>h('button',{type:'button','aria-pressed':String(state.palette===k),
     onclick:()=>{ state.palette=k; applyPalette(); persist(); render(); }}, h('i',{style:`background:${c}`}), l)));
+  const icons = h('div',{class:'themes',role:'group','aria-label':'App icon'}, ...ICONS.map(([k,l])=>h('button',{type:'button','aria-pressed':String((P.icon||'a')===k),
+    onclick:()=>{ P.icon=k; applyIcon(); persist(); render(); toast(`Icon set to ${l}`); }}, h('img',{src:iconPath(192,k),alt:'',width:'44',height:'44',style:'border-radius:11px;display:block'}), l)));
   const mode = h('div',{class:'seg'}, ...[['auto','Match device'],['light','Light'],['dark','Dark']].map(([k,l])=>h('button',{type:'button','aria-pressed':String((P.mode||'auto')===k),onclick:()=>{ setP('mode',k); applyMode(); }},l)));
   const nameIn = h('input',{id:'setName',class:'set-in',maxlength:'40',value:state.title,onchange:e=>{ const v=e.target.value.trim(); if(v){ state.title=v; persist(); render(); toast('Planner renamed'); } }});
   const start = h('select',{id:'setStart',class:'set-in',onchange:e=>setP('start',e.target.value)}, ...[['today','Today'],['calendar','Calendar'],['planner','Classes'],['study','Study']].map(([k,l])=>h('option',{value:k,selected:(P.start||'today')===k||null},l)));
@@ -1302,7 +1304,9 @@ function renderSettings(){
     h('div',{class:'sheet-head'}, h('div',null, h('h1',null,'Settings'), h('p',{class:'lead'},`Make My Planner yours, ${state.user.name}.`))),
     sec('Look', null,
       row('Color theme', 'Class colors change to match.', themes),
-      row('Light or dark', null, mode)),
+      row('Light or dark', null, mode),
+      row('App icon', 'Used on the browser tab, your Home Screen and notifications. Its colors follow your theme.', icons),
+      isInstalled() || isIOS() || /Android/i.test(navigator.userAgent) ? h('p',{class:'hint',style:'margin:0'},'Already added My Planner to your Home Screen? To see a new icon there, remove it and add it again.') : null),
     sec('Planner', null,
       row('Planner name', 'Shown at the top of the page.', nameIn),
       row('Open to', 'The page you see first.', start)),
@@ -1373,7 +1377,16 @@ async function restoreBackup(f){
 
 /* ---------- color themes ---------- */
 const PALETTES = [['berry','Lavender','#9a87b5'],['ocean','Dusty blue','#7f9cb4'],['sunset','Clay','#c39478'],['rose','Dusty rose','#c08d98'],['sage','Sage','#87a08c']];
-function applyPalette(){ const r=document.documentElement; if(state.palette==='berry') delete r.dataset.palette; else r.dataset.palette=state.palette; }
+const ICONS = [['a','Planner page'],['c','Calendar'],['d','Book stack'],['h','Sticky notes']];
+const THEME_HEX = {berry:'#9a87b5', ocean:'#7f9cb4', sunset:'#c39478', rose:'#c08d98', sage:'#87a08c'};
+const iconPath = (size, ic, th) => `icons/${ic || state.prefs.icon || 'a'}-${th || state.palette || 'berry'}-${size}.png`;
+function applyIcon(){
+  const ic = state.user ? (state.prefs.icon||'a') : 'a', th = state.user ? (state.palette||'berry') : 'berry';
+  const set = (id, attr, val) => { const el = document.getElementById(id); if(el && el.getAttribute(attr)!==val) el.setAttribute(attr, val); };
+  set('favIcon','href', iconPath(192, ic, th)); set('appleIcon','href', iconPath(180, ic, th));
+  set('manifestLink','href', `manifest-${ic}-${th}.webmanifest`); set('themeColor','content', THEME_HEX[th] || '#9a87b5');
+}
+function applyPalette(){ const r=document.documentElement; if(state.palette==='berry') delete r.dataset.palette; else r.dataset.palette=state.palette; applyIcon(); }
 function renderPalette(){
   return; // colors now live on the Settings page
   document.getElementById('palette').replaceChildren(h('span',null,'Colors'),

@@ -1,15 +1,28 @@
 {
-  "name": "My Planner",
-  "short_name": "Planner",
-  "description": "Homework, tests, study plans, events and a daily to-do list.",
-  "start_url": "./",
-  "scope": "./",
-  "display": "standalone",
-  "background_color": "#f4f1f4",
-  "theme_color": "#9a87b5",
-  "icons": [
-    {"src": "icon-192.png", "sizes": "192x192", "type": "image/png"},
-    {"src": "icon-512.png", "sizes": "512x512", "type": "image/png"},
-    {"src": "icon-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable"}
-  ]
+ "name": "My Planner",
+ "short_name": "Planner",
+ "description": "Homework, tests, study plans, events and a daily to-do list.",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f4f1f4",
+ "theme_color": "#9a87b5",
+ "icons": [
+  {
+   "src": "icons/a-berry-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/a-berry-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/a-berry-mask.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
 }

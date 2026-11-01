@@ -1,0 +1,28 @@
+{
+ "name": "My Planner",
+ "short_name": "Planner",
+ "description": "Homework, tests, study plans, events and a daily to-do list.",
+ "start_url": "./",
+ "scope": "./",
+ "display": "standalone",
+ "background_color": "#f1f4f0",
+ "theme_color": "#87a08c",
+ "icons": [
+  {
+   "src": "icons/d-sage-192.png",
+   "sizes": "192x192",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/d-sage-512.png",
+   "sizes": "512x512",
+   "type": "image/png"
+  },
+  {
+   "src": "icons/d-sage-mask.png",
+   "sizes": "512x512",
+   "type": "image/png",
+   "purpose": "maskable"
+  }
+ ]
+}

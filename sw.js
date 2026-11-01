@@ -8,8 +8,8 @@ self.addEventListener('push', event => {
   event.waitUntil(self.registration.showNotification(data.title || 'My Planner', {
     body: data.body || '',
     tag: data.tag || undefined,
-    icon: 'icon-192.png',
-    badge: 'icon-192.png',
+    icon: data.icon || 'icons/a-berry-192.png',
+    badge: data.icon || 'icons/a-berry-192.png',
     data: { page: data.page || 'today' }
   }));
 });

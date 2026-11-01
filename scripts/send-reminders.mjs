@@ -29,7 +29,8 @@ for (const doc of snap.docs) {
   const dead = new Set();
   for (const r of fresh) {
     for (const sub of push.subs) {
-      try { await webpush.sendNotification(sub, JSON.stringify(r), { TTL: 3600 }); sent++; }
+      const icon = `icons/${(planner.prefs && planner.prefs.icon) || 'a'}-${planner.theme || 'berry'}-192.png`;
+      try { await webpush.sendNotification(sub, JSON.stringify({ ...r, icon }), { TTL: 3600 }); sent++; }
       catch (e) { if (e.statusCode === 404 || e.statusCode === 410) dead.add(sub.endpoint); else console.log('send failed', e.statusCode || e.message); }
     }
     already.add(r.tag);
