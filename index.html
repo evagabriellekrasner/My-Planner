@@ -1558,12 +1558,19 @@ function findDate(str){
     const mo = MONTHS.indexOf(m[1].slice(0,3).toLowerCase()), d = +m[2];
     if(mo>=0 && d>=1 && d<=31) return {iso:`${m[3]?+m[3]:yearFor(mo)}-${pad(mo+1)}-${pad(d)}`, hit:m[0]};
   }
-  if((m = str.match(/\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?\b/))){
-    const mo = +m[1]-1, d = +m[2];
-    if(mo>=0 && mo<=11 && d>=1 && d<=31){ const y = m[3] ? (+m[3]<100 ? 2000+ +m[3] : +m[3]) : yearFor(mo); return {iso:`${y}-${pad(mo+1)}-${pad(d)}`, hit:m[0]}; }
+  // 11/4 or 11/4/26 anywhere (but not "p.1/2" or "#3/4");
+  // 11-4 or 11.4 only at the very start of a line (so "Notes 3.1" and "p.1-4" aren't dates)
+  const num = (mo, d, y, hit) => { mo=+mo-1; d=+d; if(mo<0||mo>11||d<1||d>31) return null; const yy = y ? (+y<100 ? 2000+ +y : +y) : yearFor(mo); return {iso:`${yy}-${pad(mo+1)}-${pad(d)}`, hit}; };
+  for(const mm of str.matchAll(/(^|[^\w.#\/])(\d{1,2})\/(\d{1,2})(?:\/(\d{2,4}))?(?![\w\/])/g)){ const r = num(mm[2], mm[3], mm[4], mm[0].slice(mm[1].length)); if(r) return r; }
+  if((m = str.match(/^\s*(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s*)?(\d{1,2})[-.](\d{1,2})(?:[-.](\d{2,4}))?(?![\w.\-])/i))){ const r = num(m[1], m[2], m[3], m[0].trim().replace(/^(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s*)/i,'')); if(r) return r; }
+  if((m = str.match(/^\s*(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s*)?(\d{1,2})(?:st|nd|rd|th)?(?:-|\s)(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?(?:,?\s+(\d{4}))?/i))){
+    const mo = MONTHS.indexOf(m[2].slice(0,3).toLowerCase()), d = +m[1];
+    if(mo>=0 && d>=1 && d<=31) return {iso:`${m[3]?+m[3]:yearFor(mo)}-${pad(mo+1)}-${pad(d)}`, hit:m[0]};
   }
   return null;
 }
+const WEEKDAYS = ['sun','mon','tue','wed','thu','fri','sat'];
+function weekdayAt(str){ const m = str.trim().match(/^(mon|tues?|wed(?:nes)?|thur?s?|fri|sat|sun)[a-z]*\.?\b/i); return m ? {i: WEEKDAYS.indexOf(m[1].slice(0,3).toLowerCase()), hit: m[0]} : null; }
 const cleanTitle = t => t.replace(/\b(mon|tues?|wed|thur?s?|fri|sat|sun)[a-z]*\.?,?(?=\s|$)/ig,'').replace(/^(due|hw|homework|class\s*work|in[- ]class)\s*[:\-–]\s*/i,'').replace(/\bdue\b:?/ig,'').replace(/^[\s\-–:,.•·*]+|[\s\-–:,.•·*]+$/g,'').replace(/\s{2,}/g,' ').trim();
 function kindOf(text, col){
   const t = text.toLowerCase();
@@ -1594,14 +1601,16 @@ function smartParse(rawText, cellRows){
   const rows = cellRows && cellRows.length ? cellRows
     : rawText.split('\n').map(l => (l.includes('\t') ? l.split('\t') : l.split(' | ')).map((s,i)=>({x:i, s:s.trim(), idx:true})));
   const out = [];
-  let header = null, last = null;
+  let header = null, last = null, week = null, sawHw = false;
   for(const row of rows){
     if(!row){ last = null; continue; }
     const cells = row.filter(c=>c.s);
     if(!cells.length) continue;
     // header row?
     const labels = cells.map(c=>{ const hit = COLS.find(([,re])=>re.test(c.s.replace(/[:*]/g,'').trim())); return hit ? hit[0] : null; });
-    if(labels.filter(Boolean).length >= 2 && labels.some(l=>l==='hw'||l==='class') && !findDate(cells.map(c=>c.s).join(' '))){
+    const joined = cells.map(c=>c.s).join(' ');
+    if(labels.filter(Boolean).length >= 2 && labels.filter(Boolean).length >= cells.length-1 && labels.some(l=>l==='hw'||l==='class')
+       && !/\d/.test(joined) && cells.every(c=>c.s.length <= 30)){
       header = cells.map((c,i)=>({x:c.x, kind:labels[i]})).filter(h=>h.kind);
       last = null; continue;
     }
@@ -1613,7 +1622,12 @@ function smartParse(rawText, cellRows){
       return best && bd < 160 ? best.kind : null;
     };
     const whole = cells.map(c=>c.s).join(' ');
-    const date = findDate(whole);
+    let date = findDate(whole);
+    // "Week of 11/2" sets the week; later rows that start with Monday, Tue... get that week's dates
+    if(date && /\bweek\b/i.test(whole) && cleanTitle(whole.replace(date.hit,'').replace(/week\s*(of)?/i,'')).length < 3){
+      const d0 = parse(date.iso); week = addDays(date.iso, -((d0.getDay()+6)%7)); last = null; continue;
+    }
+    if(!date && week){ const wd = weekdayAt(cells[0].s); if(wd && wd.i>=1){ date = {iso: addDays(week, wd.i-1), hit: wd.hit}; } }
     if(!date){
       // a line without a date continues the cells of the row above (wrapped table text)
       if(last && header){ for(const c of cells){ const k = colFor(c); if(k && k!=='date' && last.parts[k]!==undefined) last.parts[k] += ' ' + c.s; else if(k && k!=='date') last.parts[k] = c.s; } }
@@ -1629,6 +1643,8 @@ function smartParse(rawText, cellRows){
       const kk = k || 'unknown';
       parts[kk] = ((parts[kk]||'') + ' ' + s).trim();
     }
+    if(parts.hw && !header) sawHw = true;
+    if(parts.hw && parts.unknown && !header){ parts.class = ((parts.class||'') + ' ' + parts.unknown).trim(); delete parts.unknown; }
     last = {date: date.iso, parts};
     out.push(last);
   }
@@ -1640,7 +1656,8 @@ function smartParse(rawText, cellRows){
       for(const piece of pieces){
         const title = cleanTitle(piece);
         if(title.length < 3 || NOTHING.test(title)) continue;
-        const kind = kindOf(piece, col);
+        let kind = kindOf(piece, col);
+        if(kind==='unknown' && sawHw && !header) kind = 'class';   // the schedule labels homework, so unlabeled lines are class work
         items.push({title: title.slice(0,80), kind, col, type: kind==='class' ? 'other' : kind==='hw' ? (guessType(title)==='reading'?'reading':'homework') : guessType(title), due: r.date, class:null,
           notes: kind==='class' ? 'In-class work' : ''});
       }
@@ -1717,7 +1734,7 @@ function openPdfModal(presetCls){
   const busy = (msg) => { view.stage='busy'; view.progress=msg; draw(); };
 
   async function fromPages(pages){
-    const text = pages.join('\n\n');
+    const text = pages.join('\n\n'); view.lastText = text;
     if(text.replace(/\s/g,'').length < 20){ view.stage='pick'; view.msg='There’s no text to read here (a scanned PDF or photo). Try a PDF where you can highlight the words, or paste the text instead.'; draw(); return; }
     const chunks = chunkText(pages);
     let res = null;
@@ -1751,6 +1768,21 @@ function openPdfModal(presetCls){
   function applyPick(){
     const t = todayIso();
     view.rows.forEach(r=>{ r.on = r.due >= t && (view.show==='all' || r.kind!=='class'); });
+  }
+  function newClassRow(){
+    const inp = h('input',{id:'pdfNewClass',maxlength:'60',placeholder:'New class name, e.g. Chemistry',autocomplete:'off',
+      style:'flex:1;min-width:0;background:var(--paper);border:1.5px solid var(--accent);border-radius:10px;padding:9px 10px'});
+    const make = async () => {
+      const nm = inp.value.trim(); if(!nm){ inp.focus(); return; }
+      const ex = state.classes.find(c=>c.name.toLowerCase()===nm.toLowerCase());
+      const id = ex ? ex.id : await store.add('classes',{name:nm, color:nextColor(), teacher:'', created:Date.now()});
+      if(!id) return;
+      view.defaultClass = id; view.allClass = id; view.newClassOpen = false;
+      view.rows.forEach(r=>{ if(view.stage==='review') r.classId = id; });
+      draw(); toast(ex ? `Using ${nm}` : `Added ${nm}`);
+    };
+    inp.addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); make(); } if(e.key==='Escape'){ view.newClassOpen=false; draw(); } });
+    return h('div',{style:'display:flex;gap:8px;margin-top:8px'}, inp, h('button',{type:'button',class:'btn primary',onclick:make},'Add class'));
   }
   async function handleFile(file){
     if(!file) return;
@@ -1790,7 +1822,9 @@ function openPdfModal(presetCls){
       kids.push(h('p',{class:'lead',style:'margin:0 0 12px'},'The planner reads it, finds every line with an assignment and a date (even hundreds), and you check them before anything is added.'),
         drop, ta,
         h('div',{class:'qf',style:'margin-top:10px'}, h('span',null,'Which class is this for?'),
-          h('select',{id:'pdfClass',onchange:e=>{view.defaultClass=e.target.value;}}, ...classOpts(view.defaultClass))));
+          h('select',{id:'pdfClass',onchange:e=>{ if(e.target.value==='__new'){ view.newClassOpen=true; draw(); setTimeout(()=>document.getElementById('pdfNewClass')?.focus(),30); return; } view.defaultClass=e.target.value; view.allClass=e.target.value; }},
+            ...classOpts(view.defaultClass), h('option',{value:'__new'},'+ New class…'))),
+        view.newClassOpen ? newClassRow() : null);
       if(view.msg) kids.push(h('p',{class:'err',style:'margin:10px 0 0'},view.msg));
       kids.push(h('div',{class:'modal-foot',style:'margin-top:14px'}, h('div',{class:'r'},
         h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'),
@@ -1801,8 +1835,11 @@ function openPdfModal(presetCls){
     } else {
       const on = view.rows.filter(r=>r.on).length, past = view.rows.filter(r=>r.due<todayIso()).length;
       if(!view.rows.length){
-        kids.push(h('div',{class:'empty sm'}, h('p',null,'No dated assignments were found. Try pasting the text instead, or add things by hand on the Classes page.')),
-          h('div',{class:'modal-foot'}, h('button',{type:'button',class:'btn',onclick:()=>{view.stage='pick';draw();}},'Try again'), h('div',{class:'r'}, h('button',{type:'button',class:'btn primary',onclick:closeModal},'Done'))));
+        view.paste = view.lastText || view.paste;
+        kids.push(h('div',{class:'empty sm'}, h('p',null,'No assignments with dates were found. Below is the text the planner read from your file. Make sure each assignment has a date on its line (like “11/4 HW p.45 #1-10”), then press “Read pasted text”.')),
+          (()=>{ const ta = h('textarea',{id:'pasteFix',style:'width:100%;min-height:160px;background:var(--paper);border:1px solid var(--rule);border-radius:12px;padding:10px;font-size:13px',oninput:e=>{view.paste=e.target.value;}}); ta.value = view.paste||''; return ta; })(),
+          h('div',{class:'modal-foot',style:'margin-top:10px'}, h('button',{type:'button',class:'btn',onclick:()=>{view.stage='pick';view.msg='';draw();}},'Start over'),
+            h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'button',class:'btn primary',onclick:handlePaste},'Read pasted text'))));
       } else {
         kids.push(h('p',{class:'lead',style:'margin:0'},`Found ${view.rows.length} assignments. Untick anything you don’t want and fix anything that looks off.`));
         if(past) kids.push(h('p',{class:'hint'},`${past} of them are already past, so they start unticked.`));
@@ -1820,11 +1857,12 @@ function openPdfModal(presetCls){
         if(view.source==='local') kids.push(h('p',{class:'hint'},'Double-check names, types and dates before adding.'));
         kids.push(h('div',{class:'qrow',style:'margin-top:10px;gap:8px'},
           h('span',{style:'font-size:14px;font-weight:700'},'Put all in:'),
-          h('select',{id:'pdfAll',class:'qdate',onchange:e=>{ if(e.target.value){ view.allClass=e.target.value; view.rows.forEach(r=>r.classId=e.target.value); draw(); toast(`All set to ${classById(e.target.value)?.name||'that class'}`); } }},
-            h('option',{value:'',selected:!view.allClass||null},'Choose a class…'), ...classOpts(view.allClass||null)),
+          h('select',{id:'pdfAll',class:'qdate',onchange:e=>{ if(e.target.value==='__new'){ view.newClassOpen=true; draw(); setTimeout(()=>document.getElementById('pdfNewClass')?.focus(),30); return; } if(e.target.value){ view.allClass=e.target.value; view.rows.forEach(r=>r.classId=e.target.value); draw(); toast(`All set to ${classById(e.target.value)?.name||'that class'}`); } }},
+            h('option',{value:'',selected:!view.allClass||null},'Choose a class…'), ...classOpts(view.allClass||null), h('option',{value:'__new'},'+ New class…')),
           h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=true);draw();toast(`Ticked all ${view.rows.length}`);}},'Tick all'),
           h('button',{type:'button',class:'btn sm',onclick:()=>{applyPick();draw();toast(`Ticked ${view.rows.filter(r=>r.on).length} upcoming`);}},'Only upcoming'),
           h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=false);draw();toast('Unticked all');}},'Untick all')));
+        if(view.newClassOpen) kids.push(newClassRow());
         kids.push(h('ul',{class:'found'}, ...view.rows.map(r=>h('li',{class:r.on?'':'off'},
           h('input',{type:'checkbox',id:'pc-'+r.key,checked:r.on||null,'aria-label':'Include '+r.title,onchange:e=>{r.on=e.target.checked; e.target.closest('li').classList.toggle('off',!r.on); updateCount();}}),
           h('input',{class:'ti',id:'pt-'+r.key,value:r.title,'aria-label':'Title',oninput:e=>{r.title=e.target.value;}}),
