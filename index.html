@@ -530,15 +530,32 @@ const FIREBASE_CONFIG = {
 };
 const PRELOADED = {};
 
-let fb = null;
-async function cloud(){
-  if(!FIREBASE_CONFIG) return null;
-  if(fb) return fb;
-  const v = 'https://www.gstatic.com/firebasejs/10.12.2/';
-  await loadScript(v+'firebase-app-compat.js'); await loadScript(v+'firebase-firestore-compat.js');
-  firebase.initializeApp(FIREBASE_CONFIG);
-  fb = firebase.firestore();
-  return fb;
+// Talk to Firestore over its plain web address (no extra libraries, clear errors).
+class CloudError extends Error { constructor(kind, detail){ super(kind); this.kind = kind; this.detail = detail; } }
+const cloudUrl = key => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/planners/${key}?key=${FIREBASE_CONFIG.apiKey}`;
+async function cloudCall(key, opts={}){
+  const ctl = new AbortController(), timer = setTimeout(()=>ctl.abort(), 12000);
+  let res;
+  try { res = await fetch(cloudUrl(key), {...opts, signal: ctl.signal}); }
+  catch(e){ throw new CloudError(e && e.name==='AbortError' ? 'timeout' : 'blocked', String(e)); }
+  finally { clearTimeout(timer); }
+  let body = null; try { body = await res.json(); } catch {}
+  if(res.ok) return body;
+  const msg = (body && body.error && body.error.message) || '';
+  if(res.status===404 && /database\b.*does not exist/i.test(msg)) throw new CloudError('nodb', msg);
+  if(res.status===404) return null;                       // no planner with that name + passcode
+  if(res.status===403 || res.status===401) throw new CloudError(/api.*(disabled|not been used)/i.test(msg) ? 'api' : 'rules', msg);
+  throw new CloudError('server', res.status+' '+msg);
+}
+const cloudGet = async key => { const d = await cloudCall(key); return d && d.fields && d.fields.json ? JSON.parse(d.fields.json.stringValue) : null; };
+const cloudSet = (key, data) => cloudCall(key, {method:'PATCH', headers:{'Content-Type':'application/json'}, body: JSON.stringify({fields:{json:{stringValue: JSON.stringify(data)}}})});
+function cloudMessage(e){
+  const k = e && e.kind;
+  if(k==='timeout' || k==='blocked') return 'Can’t reach the planner’s database. If you’re on a school device or school Wi-Fi, it may be blocked. Try another device or network.';
+  if(k==='nodb') return 'The planner’s database isn’t set up yet (Firestore database missing).';
+  if(k==='rules') return 'The planner’s database said no (check the Firestore rules were published).';
+  if(k==='api') return 'The planner’s database is turned off (Firestore API not enabled).';
+  return 'Something went wrong talking to the database. Try again in a minute.';
 }
 async function keyFor(name, pin){
   const txt = 'planner:' + name.trim().toLowerCase().replace(/\s+/g,' ') + ':' + pin;
@@ -559,14 +576,12 @@ function persist(){
   clearTimeout(saveTimer);
   saveTimer = setTimeout(async ()=>{
     const data = snapshotData();
-    const db = await cloud().catch(()=>null);
-    if(db){ try { await db.collection('planners').doc(state.user.key).set(data); } catch { toast('Couldn’t save to the cloud. Check your internet connection.'); } }
-    if(!LS.set('planner:'+state.user.key, JSON.stringify(data)) && !db) toast('This browser won’t let the planner save. Turn off private browsing.');
+    LS.set('planner:'+state.user.key, JSON.stringify(data));
+    if(FIREBASE_CONFIG){ try { await cloudSet(state.user.key, data); } catch(e){ toast('Not saved online: '+cloudMessage(e)); } }
   }, 300);
 }
 async function loadPlanner(key){
-  const db = await cloud().catch(()=>null);
-  if(db){ const doc = await db.collection('planners').doc(key).get(); if(doc.exists) return doc.data(); }
+  if(FIREBASE_CONFIG) return await cloudGet(key);       // throws a CloudError if the database can't be used
   const raw = LS.get('planner:'+key);
   if(raw) return JSON.parse(raw);
   return PRELOADED[key] ? JSON.parse(JSON.stringify(PRELOADED[key])) : null;
@@ -607,12 +622,15 @@ function showLogin(mode){
       btn.disabled = true;
       const key = await keyFor(n,p);
       let found = null;
-      try { found = await loadPlanner(key); } catch { btn.disabled=false; return fail('Couldn’t connect. Check your internet and try again.'); }
+      btn.textContent = 'Opening…';
+      try { found = await loadPlanner(key); } catch(e) { btn.disabled=false; btn.textContent = mode==='new'?'Create my planner':'Open my planner'; return fail(FIREBASE_CONFIG ? cloudMessage(e) : 'Couldn’t open your planner. Try again.'); }
       if(mode==='new'){
         if(found){ btn.disabled=false; return fail('There’s already a planner with that name and passcode. Log in instead, or pick a different passcode.'); }
-        useData({name:n}, n, key); persist();
+        useData({name:n}, n, key);
+        if(FIREBASE_CONFIG){ try { await cloudSet(key, snapshotData()); } catch(e){ btn.disabled=false; btn.textContent='Create my planner'; state.user=null; return fail(cloudMessage(e)); } }
+        persist();
       } else {
-        if(!found){ btn.disabled=false; return fail('No planner matches that name and passcode. Check them, or create a new planner.'); }
+        if(!found){ btn.disabled=false; btn.textContent='Open my planner'; return fail('No planner with that name and passcode yet. Check them, or tap “New planner” to make one.'); }
         useData(found, n, key);
       }
       LS.set('planner:session', JSON.stringify({key, name: state.user.name}));
