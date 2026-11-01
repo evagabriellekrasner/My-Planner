@@ -173,6 +173,27 @@ button{cursor:pointer}
 .cell.out .num{opacity:.45}
 .cell.today .num{background:var(--accent);color:var(--accent-ink);border-radius:999px}
 .cell[aria-pressed="true"]{box-shadow:inset 0 0 0 2px var(--accent)}
+.dtype{font-size:10px;font-weight:800;border-radius:6px;padding:0 5px;background:var(--accent-soft);color:var(--ink-2);margin-left:auto;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:70%}
+.dtype.off{background:transparent;color:var(--done);font-weight:700}
+.cell .numrow{display:flex;align-items:center;gap:4px;width:100%;min-width:0}
+.school{background:var(--paper);border-radius:14px;padding:10px 14px;margin-top:14px;display:flex;flex-wrap:wrap;gap:6px 10px;align-items:center;font-size:14px}
+.school b{font-family:var(--f-display);font-weight:600;font-size:16px}
+.school .cl{display:inline-flex;align-items:center;gap:6px;background:var(--sheet);border-radius:999px;padding:3px 10px;font-weight:700;font-size:13px}
+.school .cl i{width:9px;height:9px;border-radius:3px;display:inline-block}
+.school .cl small{color:var(--ink-2);font-weight:700}
+.sch-step{border-top:1px solid var(--rule);padding:14px 0 6px}
+.sch-step:first-of-type{border-top:0;padding-top:0}
+.sch-step h3{font-family:var(--f-display);font-weight:600;font-size:17px;margin:0 0 4px}
+.sch-step .lead{font-size:14px;margin:0 0 10px}
+.dt-row{display:grid;grid-template-columns:150px minmax(0,1fr) auto;gap:8px;align-items:center;padding:8px 0;border-bottom:1px dashed var(--rule)}
+.dt-row input[type=text]{width:100%}
+.per-row{display:grid;grid-template-columns:minmax(0,1fr) 90px;gap:8px;align-items:center;padding:4px 0}
+.choice{display:flex;flex-direction:column;gap:8px}
+.choice label{display:flex;gap:10px;align-items:flex-start;border:2px solid var(--rule);border-radius:12px;padding:10px 12px;cursor:pointer}
+.choice label:has(input:checked){border-color:var(--accent);background:var(--accent-soft)}
+.choice small{display:block;color:var(--ink-2);font-size:13px}
+.offlist{display:flex;flex-wrap:wrap;gap:6px;margin-top:8px}
+@media (max-width:760px){.dt-row{grid-template-columns:minmax(0,1fr) auto} .dt-row .qshort{grid-column:1/-1}}
 .num{font-family:var(--f-mono);font-size:12px;font-weight:500;width:24px;height:24px;display:inline-flex;align-items:center;justify-content:center;font-variant-numeric:tabular-nums}
 .chip{display:block;width:100%;border:0;border-radius:5px;padding:2px 6px;font-size:12px;line-height:1.35;text-align:left;color:var(--on-hl);white-space:nowrap;overflow:hidden;text-overflow:ellipsis;font-weight:700}
 .chip b{font-family:var(--f-mono);font-weight:500;font-size:10px;letter-spacing:.04em;margin-right:4px;opacity:.8}
@@ -507,7 +528,7 @@ const state = {
   mode:'loading', readOnly:false, slow:false, loaded:false,
   addingClass:false, newClass:'',
   q:{title:'', type:'homework', classId:null, date:null},
-  palette:'berry', page:'today', events:[], prefs:{mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, icon:'a'}, todos:[], todoDay:null, todoText:'',
+  palette:'berry', page:'today', events:[], schedule:null, prefs:{mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, icon:'a'}, todos:[], todoDay:null, todoText:'',
   plans:[], planAdd:null, planAddText:'', delArm:null,
   sp:{pick:null, classId:null, title:'', type:'test', date:null, days:3, tasks:[], taskText:''}
 };
@@ -653,7 +674,7 @@ async function keyFor(name, pin){
 }
 const LS = { get(k){ try{ return localStorage.getItem(k); }catch{ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); return true; }catch{ return false; } }, del(k){ try{ localStorage.removeItem(k); }catch{} } };
 const snapshotData = () => ({ name: state.user.name, title: state.title, theme: state.palette, prefs: state.prefs,
-  classes: state.classes, items: state.items, plans: state.plans, todos: state.todos, events: state.events, updated: Date.now() });
+  classes: state.classes, items: state.items, plans: state.plans, todos: state.todos, events: state.events, schedule: state.schedule, updated: Date.now() });
 let saveTimer = null;
 function persist(){
   if(!state.user) return;
@@ -673,7 +694,7 @@ async function loadPlanner(key){
 function useData(d, name, key){
   state.user = {name: d.name || name, key};
   state.title = d.title || DEFAULT_TITLE; state.palette = d.theme || 'berry';
-  state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[]; state.events = d.events||[];
+  state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[]; state.events = d.events||[]; state.schedule = d.schedule||null;
   state.prefs = {mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, icon:'a', ...(d.prefs||{})};
   state.loaded = true; state.mode = 'local'; state.page = state.prefs.start || 'today';
   applyPalette(); applyMode();
@@ -688,7 +709,7 @@ function startApp(){
 }
 function logout(){
   LS.del('planner:session');
-  state.user=null; state.classes=[]; state.items=[]; state.plans=[]; state.todos=[]; state.events=[];
+  state.user=null; state.classes=[]; state.items=[]; state.plans=[]; state.todos=[]; state.events=[]; state.schedule=null;
   delete document.documentElement.dataset.theme; delete document.documentElement.dataset.palette; applyIcon();
   document.getElementById('app').hidden = true; showLogin('login');
 }
@@ -863,12 +884,14 @@ function quickAdd(cls){
   const field = (label, ctl) => h('label',{class:'qf'}, h('span',null,label), ctl);
   const title = h('input',{id:'qTitle',maxlength:'140',autocomplete:'off',placeholder:'e.g. Chapter 5 worksheet',value:q.title,
     oninput:e=>{ q.title=e.target.value; }, onkeydown:e=>{ if(e.key==='Enter'){ e.preventDefault(); submit(); } }});
-  const clsSel = h('select',{id:'qClass',onchange:e=>{q.classId=e.target.value;}},
+  const clsSel = h('select',{id:'qClass',onchange:e=>{q.classId=e.target.value; render();}},
     ...sortedClasses().map(c=>h('option',{value:c.id,selected:q.classId===c.id||null},c.name)));
   const typeSel = h('select',{id:'qType',onchange:e=>{q.type=e.target.value;}},
     ...TYPES.map(([k,l])=>h('option',{value:k,selected:q.type===k||null},l)));
   const date = h('input',{id:'qDate',type:'date',value:q.date,onchange:e=>{ if(e.target.value){ q.date=e.target.value; render(); } }});
+  const nextCls = q.classId ? nextClassDate(q.classId, t) : null;
   const shortcuts = h('div',{class:'qshort'},
+    nextCls ? h('button',{type:'button','aria-pressed':String(q.date===nextCls),title:'The next day this class meets',onclick:()=>{q.date=nextCls;render();}}, `Next class (${parse(nextCls).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})})`) : null,
     ...[[0,'Today'],[1,'Tomorrow'],[2,null],[3,null],[7,'Next week']].map(([n,l])=>{ const ds=addDays(t,n);
       return h('button',{type:'button','aria-pressed':String(q.date===ds),onclick:()=>{q.date=ds;render();}}, l || parse(ds).toLocaleDateString(undefined,{weekday:'long'})); }));
   return h('section',{class:'quick','aria-label':'Add homework or a test'},
@@ -984,7 +1007,8 @@ function renderCalendar(all, cls, withEvents){
     const cell = h('button',{class:'cell'+(out?' out':'')+(ds===t?' today':''),'aria-pressed':String(state.calDay===ds),
       'aria-label':`${longDay(ds)}, ${its.length} item${its.length===1?'':'s'}`,
       onclick:()=>{ state.calDay=ds; state.q.date=ds; if(out) state.calMonth=ds.slice(0,7); render(); }},
-      h('span',{class:'num',text:d.getDate()}));
+      (()=>{ const dt = dayTypeOn(ds); return h('span',{class:'numrow'}, h('span',{class:'num',text:d.getDate()}),
+        dt ? h('span',{class:'dtype'+(dt.off?' off':''), title: dt.off ? 'No school' : dt.name+' day', text: dt.off ? 'Off' : dt.name}) : null); })());
     its.slice(0,3).forEach(i=>{
       const c = classById(i.classId);
       const isLate = !i.done && i.due<t;
@@ -1021,6 +1045,7 @@ function renderCalendar(all, cls, withEvents){
     h('div',{class:'day-h'}, h('span',{class:'d',text:dayLabel(sel)}), h('span',{class:'r',text:rel(diff(sel))}),
       withEvents ? null
         : h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>{ state.q.date=sel; render(); const n=document.getElementById('qTitle'); if(n){ n.scrollIntoView({block:'center'}); n.focus(); } }},'+ Add on this day')),
+    schoolBlock(sel, true),
     withEvents ? scheduleBlock(sel, false) : null,
     selItems.length ? h('ul',{class:'list'}, ...selItems.map(i=>itemRow(i,false)))
       : (withEvents && eventsOn(sel).length ? null : h('div',{class:'empty sm'}, h('p',null, withEvents ? 'Nothing on this day.' : 'Nothing due this day.'))),
@@ -1181,6 +1206,186 @@ function renderCalendarPage(){
   const done = h('label',{class:'chk'}, h('input',{type:'checkbox',id:'showDone2',checked:state.showDone||null,onchange:e=>{state.showDone=e.target.checked;render();}}),'Show completed');
   const controls = h('div',{class:'controls'}, h('div',{class:'ctl-l'}, calNav()), done);
   return [head, activitiesBlock(), controls, ...renderCalendar(all, null, true)];
+}
+
+/* ---------- school schedule: which classes meet on which days ---------- */
+const WD = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+let dtCache = {key:null, map:new Map()};
+function isOffDay(sch, ds){ return (sch.off||[]).some(o => ds>=o.from && ds<=(o.to||o.from)); }
+function dayTypeOn(ds){
+  const sch = state.schedule; if(!sch || !(sch.types||[]).length) return null;
+  const key = JSON.stringify(sch); if(dtCache.key!==key) dtCache = {key, map:new Map()};
+  if(dtCache.map.has(ds)) return dtCache.map.get(ds);
+  const r = computeDayType(sch, ds); dtCache.map.set(ds, r); return r;
+}
+const typeById = (sch, id) => (sch.types||[]).find(t=>t.id===id) || null;
+function rotates(sch, ds){
+  const dow = parse(ds).getDay();
+  return (sch.days||[1,2,3,4,5]).includes(dow) && !isOffDay(sch, ds) && !(sch.overrides||{})[ds] && !(sch.fixed||{})[dow];
+}
+function computeDayType(sch, ds){
+  const dow = parse(ds).getDay();
+  const ov = (sch.overrides||{})[ds];
+  if(ov==='off') return {off:true};
+  if(ov) return typeById(sch, ov);
+  if(!(sch.days||[1,2,3,4,5]).includes(dow)) return null;
+  if(isOffDay(sch, ds)) return {off:true};
+  if(sch.mode==='same') return sch.types[0];
+  if(sch.mode==='weekly') return typeById(sch, (sch.weekly||{})[dow]);
+  const fx = (sch.fixed||{})[dow]; if(fx) return typeById(sch, fx);
+  const order = (sch.order||[]).filter(id=>typeById(sch,id) && !Object.values(sch.fixed||{}).includes(id));
+  if(!order.length || !sch.start || !sch.start.date) return null;
+  let idx = Math.max(0, order.indexOf(sch.start.type));
+  // count rotating school days between the start date and this day (weekends, days off and fixed days don't count)
+  let n = 0;
+  if(ds >= sch.start.date){ for(let d=sch.start.date; d<ds; d=addDays(d,1)) if(rotates(sch,d)) n++; }
+  else { for(let d=ds; d<sch.start.date; d=addDays(d,1)) if(rotates(sch,d)) n--; }
+  const L = order.length; return typeById(sch, order[((idx + n) % L + L) % L]);
+}
+const periodOf = c => String(c.period||'').trim();
+function classesOn(ds){
+  const dt = dayTypeOn(ds); if(!dt || dt.off) return [];
+  const per = new Set((dt.periods||[]).map(String));
+  return sortedClasses().filter(c=>periodOf(c) && per.has(periodOf(c))).sort((a,b)=>periodOf(a).localeCompare(periodOf(b), undefined, {numeric:true}));
+}
+function nextClassDate(classId, from){
+  const c = classById(classId); if(!c || !periodOf(c) || !state.schedule) return null;
+  for(let i=1;i<=45;i++){ const d = addDays(from,i), dt = dayTypeOn(d); if(dt && !dt.off && (dt.periods||[]).map(String).includes(periodOf(c))) return d; }
+  return null;
+}
+function scheduleSummary(){
+  const sch = state.schedule; if(!sch) return '';
+  const names = (sch.types||[]).map(t=>t.name).join(', ');
+  return sch.mode==='same' ? 'Same classes every day' : sch.mode==='weekly' ? `By weekday: ${names}` : `Rotating: ${(sch.order||[]).map(id=>typeById(sch,id)?.name).filter(Boolean).join(' → ')}`;
+}
+function schoolBlock(ds, onCalendar){
+  const sch = state.schedule; if(!sch) return null;
+  const dt = dayTypeOn(ds), dow = parse(ds).getDay();
+  if(!dt && !(sch.days||[1,2,3,4,5]).includes(dow)) return null;
+  const change = onCalendar ? h('select',{class:'qdate',id:'dayOverride','aria-label':'Change this day',style:'margin-left:auto',onchange:e=>{
+      const v = e.target.value; const o = {...(sch.overrides||{})};
+      if(v==='auto') delete o[ds]; else o[ds]=v;
+      state.schedule = {...sch, overrides:o}; persist(); render(); toast(v==='auto' ? 'Back to the normal schedule' : 'Day changed'); }},
+      h('option',{value:'auto',selected:!(sch.overrides||{})[ds]||null},'Normal schedule'),
+      ...(sch.types||[]).map(t=>h('option',{value:t.id,selected:(sch.overrides||{})[ds]===t.id||null},`Change to ${t.name} day`)),
+      h('option',{value:'off',selected:(sch.overrides||{})[ds]==='off'||null},'No school this day')) : null;
+  if(!dt) return h('div',{class:'school'}, h('b',null,'No day type set'), change);
+  if(dt.off) return h('div',{class:'school'}, h('b',null,'No school'), change);
+  const cls = classesOn(ds);
+  return h('div',{class:'school'}, h('b',null, sch.mode==='same' ? 'School day' : `${dt.name} day`),
+    ...cls.map(c=>h('span',{class:'cl'}, h('i',{class:`sw-${c.color}`}), h('small',null,'P'+periodOf(c)), c.name)),
+    !cls.length ? h('span',{class:'hint',style:'margin:0'},'Add periods to your classes (Settings → School schedule) to see which ones meet.') : null,
+    change);
+}
+
+function openScheduleEditor(){
+  const uid = () => Math.random().toString(36).slice(2,8);
+  const cur = state.schedule ? JSON.parse(JSON.stringify(state.schedule)) : null;
+  const allPer = () => { const set = new Set(sch.periods||[]); state.classes.forEach(c=>{ if(periods[c.id]) set.add(periods[c.id]); }); return [...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})); };
+  const periods = Object.fromEntries(state.classes.map(c=>[c.id, periodOf(c)]));
+  const sch = cur || {mode:'rotate', days:[1,2,3,4,5], periods:['1','2','3','4','5','6','7','8'], types:[], order:[], fixed:{}, weekly:{}, start:{date:todayIso(), type:''}, off:[], overrides:{}};
+  sch.fixed = sch.fixed||{}; sch.weekly = sch.weekly||{}; sch.off = sch.off||[]; sch.order = sch.order||[]; sch.start = sch.start||{date:todayIso(),type:''};
+  const PRESETS = {
+    anchor: () => { const P = allPer().length ? allPer() : ['1','2','3','4','5','6','7','8'];
+      const pairs = [['1','6'],['2','7'],['3','8'],['4','5']];
+      const types = [{id:uid(), name:'Anchor', periods:[...P]}, ...pairs.map(pr=>({id:uid(), name:pr.join(''), periods:P.filter(x=>!pr.includes(x))}))];
+      return {mode:'rotate', types, order:types.map(t=>t.id), fixed:{}}; },
+    ab: () => { const t=[{id:uid(),name:'A',periods:[]},{id:uid(),name:'B',periods:[]}]; return {mode:'rotate', types:t, order:t.map(x=>x.id), fixed:{}}; },
+    gold: () => { const t=[{id:uid(),name:'Gold',periods:[]},{id:uid(),name:'Blue',periods:[]}]; return {mode:'rotate', types:t, order:t.map(x=>x.id), fixed:{}}; },
+    same: () => ({mode:'same', types:[{id:uid(), name:'School', periods: allPer().length ? allPer() : ['1','2','3','4','5','6','7','8']}], order:[], fixed:{}}),
+  };
+  const box = h('div',{class:'modal wide',role:'dialog','aria-label':'School schedule'});
+  const offFrom = {v:todayIso()}, offTo = {v:''};
+
+  function draw(){
+    const P = allPer();
+    const step = (title, lead, ...kids) => h('section',{class:'sch-step'}, h('h3',null,title), lead ? h('p',{class:'lead'},lead) : null, ...kids);
+    const mode = h('div',{class:'choice'}, ...[
+      ['rotate','Rotating days','The day type moves to the next one each school day, like A/B, Gold/Blue, or Anchor → 1-6 → 2-7 → 3-8 → 4-5. Days off don’t break the rotation.'],
+      ['weekly','Same day type on the same weekday','For example, Monday is always Gold and Tuesday is always Blue.'],
+      ['same','Same classes every day','Every class meets every school day.']].map(([k,l,sub])=>h('label',null,
+        h('input',{type:'radio',name:'schMode',value:k,checked:sch.mode===k||null,onchange:()=>{ sch.mode=k; if(k==='same' && !sch.types.length) Object.assign(sch, PRESETS.same()); draw(); }}),
+        h('span',null,h('b',null,l),h('small',null,sub)))));
+    const presets = sch.mode==='same' ? null : h('div',{class:'qshort',style:'margin-top:10px'}, h('span',{class:'hint',style:'margin:0 4px 0 0'},'Start from:'),
+      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.anchor(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'Anchor + 16, 27, 38, 45'),
+      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.ab(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'A / B days'),
+      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.gold(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'Gold / Blue days'));
+    function autoWeekly(){ sch.weekly={}; [1,2,3,4,5].forEach((d,i)=>{ sch.weekly[d] = sch.types[i % sch.types.length]?.id; }); }
+
+    const perRows = state.classes.length ? h('div',null, ...sortedClasses().map(c=>h('div',{class:'per-row'},
+        h('span',{class:'tag',style:'font-weight:700'}, h('i',{class:`sw-${c.color}`}), c.name),
+        h('input',{class:'set-in',id:'per-'+c.id,maxlength:'6',placeholder:'Period',value:periods[c.id]||'',oninput:e=>{ periods[c.id]=e.target.value.trim(); },onchange:()=>draw()}))))
+      : h('p',{class:'hint'},'Add your classes first on the Classes page.');
+    const perList = h('div',{class:'qrow',style:'margin-top:8px'}, h('span',{class:'hint',style:'margin:0'},'Periods your school has:'),
+      h('input',{class:'set-in',id:'schPeriods',value:(sch.periods||[]).join(', '),placeholder:'1, 2, 3, 4, 5, 6, 7, 8',style:'flex:1;min-width:160px',
+        onchange:e=>{ sch.periods = e.target.value.split(/[\s,]+/).map(x=>x.trim()).filter(Boolean); draw(); }}));
+
+    const typeRows = h('div',null, ...sch.types.map(tp=>h('div',{class:'dt-row'},
+        h('input',{type:'text',class:'set-in',id:'tn-'+tp.id,value:tp.name,maxlength:'20','aria-label':'Day name',oninput:e=>{ tp.name=e.target.value; }}),
+        h('div',{class:'qshort'}, ...P.map(pp=>h('button',{type:'button','aria-pressed':String((tp.periods||[]).includes(pp)),title:`Period ${pp}`,
+          onclick:()=>{ const set=new Set(tp.periods||[]); set.has(pp)?set.delete(pp):set.add(pp); tp.periods=[...set]; draw(); }}, pp)),
+          P.length ? h('button',{type:'button',onclick:()=>{ tp.periods = (tp.periods||[]).length===P.length ? [] : [...P]; draw(); }},(tp.periods||[]).length===P.length?'None':'All') : h('span',{class:'hint',style:'margin:0'},'Add periods above first')),
+        sch.mode==='same' ? h('span') : h('button',{type:'button',class:'btn sm danger',onclick:()=>{ sch.types=sch.types.filter(x=>x!==tp); sch.order=sch.order.filter(id=>id!==tp.id); draw(); }},'Remove'))),
+      sch.mode==='same' ? null : h('button',{type:'button',class:'sadd',onclick:()=>{ const t={id:uid(),name:'Day '+(sch.types.length+1),periods:[]}; sch.types.push(t); sch.order.push(t.id); draw(); }},'+ Add a day type'));
+
+    let pattern = null;
+    if(sch.mode==='weekly'){
+      pattern = step('4. Which day is which?', null, h('div',null, ...[1,2,3,4,5].map(d=>h('div',{class:'per-row'}, h('span',{style:'font-weight:700'},WD[d]),
+        h('select',{class:'set-in',id:'wk-'+d,onchange:e=>{ sch.weekly[d]=e.target.value; }}, h('option',{value:''},'No school'), ...sch.types.map(tp=>h('option',{value:tp.id,selected:sch.weekly[d]===tp.id||null},tp.name)))))));
+    } else if(sch.mode==='rotate'){
+      sch.order = [...sch.order.filter(id=>typeById(sch,id)), ...sch.types.filter(t=>!sch.order.includes(t.id)).map(t=>t.id)];
+      const rot = sch.order.filter(id=>!Object.values(sch.fixed).includes(id));
+      if(!rot.includes(sch.start.type)) sch.start.type = rot[0] || '';
+      pattern = step('4. How does it rotate?', 'Put the days in order. Use the arrows to move them.',
+        h('ol',{style:'margin:0;padding-left:20px'}, ...rot.map((id,i)=>h('li',{style:'padding:3px 0'}, h('b',null, typeById(sch,id).name), ' ',
+          h('button',{type:'button',class:'sadd',disabled:i===0||null,onclick:()=>{ const j=sch.order.indexOf(id), k=sch.order.indexOf(rot[i-1]); [sch.order[j],sch.order[k]]=[sch.order[k],sch.order[j]]; draw(); }},'↑'),
+          h('button',{type:'button',class:'sadd',disabled:i===rot.length-1||null,onclick:()=>{ const j=sch.order.indexOf(id), k=sch.order.indexOf(rot[i+1]); [sch.order[j],sch.order[k]]=[sch.order[k],sch.order[j]]; draw(); }},'↓')))),
+        h('div',{class:'qrow',style:'margin-top:10px'}, h('span',{style:'font-weight:700'},'Pick a day you know:'),
+          h('input',{type:'date',class:'qdate',id:'schStart',value:sch.start.date,onchange:e=>{ if(e.target.value){ sch.start.date=e.target.value; draw(); } }}),
+          h('span',null,'is a'),
+          h('select',{class:'qdate',id:'schStartType',onchange:e=>{ sch.start.type=e.target.value; }}, ...rot.map(id=>h('option',{value:id,selected:sch.start.type===id||null},typeById(sch,id).name))),
+          h('span',null,'day')),
+        h('details',{style:'margin-top:10px'}, h('summary',{style:'cursor:pointer;font-weight:700'},'Is one weekday always the same? (optional)'),
+          h('p',{class:'hint'},'For example, if every Monday is an Anchor day and the other days rotate.'),
+          ...[1,2,3,4,5].map(d=>h('div',{class:'per-row'}, h('span',null,WD[d]),
+            h('select',{class:'set-in',id:'fx-'+d,onchange:e=>{ if(e.target.value) sch.fixed[d]=e.target.value; else delete sch.fixed[d]; draw(); }},
+              h('option',{value:''},'Rotates'), ...sch.types.map(tp=>h('option',{value:tp.id,selected:sch.fixed[d]===tp.id||null},`Always ${tp.name}`)))))));
+    }
+
+    const offChips = h('div',{class:'offlist'}, ...sch.off.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(o=>h('span',{class:'tchip'},
+      h('span',null, o.to && o.to!==o.from ? `${dayLabel(o.from)} – ${dayLabel(o.to)}` : dayLabel(o.from)),
+      h('button',{type:'button','aria-label':'Remove',onclick:()=>{ sch.off = sch.off.filter(x=>x!==o); draw(); }},'×'))));
+    const offAdd = h('div',{class:'qrow'},
+      h('input',{type:'date',class:'qdate',id:'offFrom',value:offFrom.v,onchange:e=>{offFrom.v=e.target.value;}}), h('span',null,'to'),
+      h('input',{type:'date',class:'qdate',id:'offTo',value:offTo.v,onchange:e=>{offTo.v=e.target.value;}}), h('span',{class:'hint',style:'margin:0'},'(optional)'),
+      h('button',{type:'button',class:'btn sm',onclick:()=>{ if(!offFrom.v) return; sch.off.push({from:offFrom.v, to: offTo.v && offTo.v>offFrom.v ? offTo.v : ''}); offTo.v=''; draw(); }},'Add'));
+
+    const preview = (()=>{ // next 10 school days
+      const save = state.schedule; state.schedule = {...sch, types:sch.types.map(t=>({...t}))}; dtCache = {key:null,map:new Map()};
+      const rows=[]; for(let i=0, d=todayIso(); rows.length<10 && i<40; i++, d=addDays(d,1)){ const dt=dayTypeOn(d); if(dt) rows.push(`${parse(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}: ${dt.off?'No school':dt.name}`); }
+      state.schedule = save; dtCache = {key:null,map:new Map()};
+      return rows.length ? h('p',{class:'hint',style:'margin:6px 0 0'}, 'Coming up: ' + rows.join(' · ')) : null; })();
+
+    box.replaceChildren(
+      h('h2',null,'School schedule'),
+      step('1. How does your school’s schedule work?', null, mode, presets),
+      step('2. What period is each class?', 'Use the same names your school uses: 1–8, A1–A4, and so on.', perRows, perList),
+      sch.mode==='same' ? step('3. Which periods meet?', null, typeRows) : step('3. Your day types', 'Name each kind of day and tap the periods that meet on it.', typeRows),
+      pattern,
+      step('5. Days off (optional)', 'Holidays and breaks. On a rotation, the next school day picks up where it left off.', offAdd, offChips),
+      preview,
+      h('div',{class:'modal-foot',style:'margin-top:14px'},
+        state.schedule ? h('button',{type:'button',class:'btn danger',onclick:()=>{ state.schedule=null; persist(); closeModal(); render(); toast('School schedule removed'); }},'Remove schedule') : h('span'),
+        h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'button',class:'btn primary',onclick:save},'Save schedule'))));
+  }
+  async function save(){
+    if(!sch.types.length){ toast('Add at least one day type, or pick “Same classes every day”.'); return; }
+    sch.types.forEach(t=>{ t.name = (t.name||'').trim() || 'Day'; });
+    for(const c of state.classes){ const v = periods[c.id]||''; if(periodOf(c)!==v) c.period = v; }
+    sch.periods = allPer();
+    state.schedule = JSON.parse(JSON.stringify(sch)); persist(); closeModal(); render(); toast('School schedule saved');
+  }
+  draw(); showModal(box);
 }
 
 /* ---------- light / dark ---------- */
@@ -1361,6 +1566,9 @@ function renderSettings(){
       row('Light or dark', null, mode),
       row('App icon', 'Used on the browser tab, your Home Screen and notifications. Its colors follow your theme.', icons),
       isInstalled() || isIOS() || /Android/i.test(navigator.userAgent) ? h('p',{class:'hint',style:'margin:0'},'Already added My Planner to your Home Screen? To see a new icon there, remove it and add it again.') : null),
+    sec('School schedule', state.schedule ? null : 'Tell the planner which classes meet on which days: A/B days, Gold/Blue, rotations like Anchor, 1-6, 2-7… It shows on your calendar and Today page.',
+      state.schedule ? row('Your schedule', scheduleSummary(), h('button',{class:'btn sm',onclick:openScheduleEditor},'Edit schedule'))
+        : row('Set up', null, h('button',{class:'btn sm primary',onclick:openScheduleEditor},'Set up my schedule'))),
     sec('Planner', null,
       row('Planner name', 'Shown at the top of the page.', nameIn),
       row('Open to', 'The page you see first.', start)),
@@ -1423,7 +1631,7 @@ async function restoreBackup(f){
   const hasStuff = state.classes.length || state.items.length;
   if(hasStuff && restoreArmed!==f.name){ restoreArmed=f.name; toast('This will replace what’s in this planner now. Choose the file again to confirm.'); return; }
   restoreArmed = null;
-  state.title = d.title || state.title; state.palette = d.theme || state.palette; state.events = d.events || state.events; if(d.prefs) state.prefs = {...state.prefs, ...d.prefs};
+  state.title = d.title || state.title; state.palette = d.theme || state.palette; state.events = d.events || state.events; state.schedule = d.schedule || state.schedule; if(d.prefs) state.prefs = {...state.prefs, ...d.prefs};
   state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[];
   applyPalette(); persist(); render();
   toast(`Loaded ${state.classes.length} classes and ${state.items.length} assignments`);
@@ -1582,7 +1790,7 @@ function renderToday(){
       h('h3',null,'Nothing on your list'),
       h('p',null,'This list fills in from your assignments, tests and study plans. Add homework and tests on the Classes page, or add your own to-do above.'));
 
-  return [head, strip, scheduleBlock(ds, true), add].concat(body).flat().filter(Boolean);
+  return [head, strip, schoolBlock(ds, false), scheduleBlock(ds, true), add].concat(body).flat().filter(Boolean);
 }
 
 /* ---------- study tracker ---------- */
@@ -1844,7 +2052,8 @@ function openClassModal(cls){
   const used = new Set(state.classes.map(c=>c.color));
   let color = cls ? cls.color : nextColor();
   const name = h('input',{id:'cName',maxlength:'60',placeholder:'e.g. AP Biology',value:cls?cls.name:''});
-  const teacher = h('input',{id:'cTeacher',maxlength:'80',placeholder:'Teacher, room or period (optional)',value:cls?cls.teacher||'':''});
+  const teacher = h('input',{id:'cTeacher',maxlength:'80',placeholder:'Teacher or room (optional)',value:cls?cls.teacher||'':''});
+  const period = h('input',{id:'cPeriod',maxlength:'6',placeholder:'e.g. 3',value:cls?cls.period||'':'',style:'max-width:120px'});
   const err = h('p',{class:'err',hidden:true});
   const sw = h('div',{class:'swatches',role:'group','aria-label':'Color'});
   const isCustom = () => /^x[0-9a-f]{6}$/i.test(color);
@@ -1874,7 +2083,7 @@ function openClassModal(cls){
   const form = h('form',{class:'modal',onsubmit:async e=>{
     e.preventDefault();
     const nm = name.value.trim(); if(!nm){ err.hidden=false; err.textContent='Give the class a name.'; return; }
-    const data = {name:nm, color, teacher:teacher.value.trim()};
+    const data = {name:nm, color, teacher:teacher.value.trim(), period:period.value.trim()};
     const btn = form.querySelector('[type=submit]'); btn.disabled=true;
     const ok = cls ? await store.update('classes',cls.id,data) : await store.add('classes',{...data, created:Date.now()});
     btn.disabled=false;
@@ -1883,6 +2092,7 @@ function openClassModal(cls){
     h('h2',null, cls?'Edit class':'Add a class'),
     h('div',{class:'field'},h('label',{for:'cName'},'Class name'),name),
     h('div',{class:'field'},h('label',{for:'cTeacher'},'Details'),teacher),
+    h('div',{class:'field'},h('label',{for:'cPeriod'},'Period (for your school schedule)'),period),
     h('div',{class:'field'},h('span',{class:'lbl'},'Class color (shades change with your theme)'),sw,customRow),
     err,
     h('div',{class:'modal-foot'}, del,
