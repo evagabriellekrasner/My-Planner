@@ -1006,9 +1006,9 @@ function renderCalendar(all, cls, withEvents){
     const out = d.getMonth()!==first.getMonth();
     const cell = h('button',{class:'cell'+(out?' out':'')+(ds===t?' today':''),'aria-pressed':String(state.calDay===ds),
       'aria-label':`${longDay(ds)}, ${its.length} item${its.length===1?'':'s'}`,
-      onclick:()=>{ state.calDay=ds; state.q.date=ds; if(out) state.calMonth=ds.slice(0,7); render(); }},
+      onclick:()=>{ if(withEvents && state.paint && state.schedule){ paintDay(ds); return; } state.calDay=ds; state.q.date=ds; if(out) state.calMonth=ds.slice(0,7); render(); }},
       (()=>{ const dt = dayTypeOn(ds); return h('span',{class:'numrow'}, h('span',{class:'num',text:d.getDate()}),
-        dt ? h('span',{class:'dtype'+(dt.off?' off':''), title: dt.off ? 'No school' : dt.name+' day', text: dt.off ? 'Off' : dt.name}) : null); })());
+        dt ? h('span',{class:'dtype'+(dt.off?' off':''), style: dt.off ? null : `background:${labelColor(dt)};color:#fff`, title: dt.off ? 'No school' : dt.name, text: dt.off ? 'Off' : dt.name}) : null); })());
     its.slice(0,3).forEach(i=>{
       const c = classById(i.classId);
       const isLate = !i.done && i.due<t;
@@ -1045,7 +1045,7 @@ function renderCalendar(all, cls, withEvents){
     h('div',{class:'day-h'}, h('span',{class:'d',text:dayLabel(sel)}), h('span',{class:'r',text:rel(diff(sel))}),
       withEvents ? null
         : h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>{ state.q.date=sel; render(); const n=document.getElementById('qTitle'); if(n){ n.scrollIntoView({block:'center'}); n.focus(); } }},'+ Add on this day')),
-    schoolBlock(sel, true),
+    schoolBlock(sel),
     withEvents ? scheduleBlock(sel, false) : null,
     selItems.length ? h('ul',{class:'list'}, ...selItems.map(i=>itemRow(i,false)))
       : (withEvents && eventsOn(sel).length ? null : h('div',{class:'empty sm'}, h('p',null, withEvents ? 'Nothing on this day.' : 'Nothing due this day.'))),
@@ -1205,185 +1205,149 @@ function renderCalendarPage(){
     h('div',{class:'actions'}, h('button',{class:'btn primary',onclick:()=>openEventModal(null, state.calDay)},'+ Add event')));
   const done = h('label',{class:'chk'}, h('input',{type:'checkbox',id:'showDone2',checked:state.showDone||null,onchange:e=>{state.showDone=e.target.checked;render();}}),'Show completed');
   const controls = h('div',{class:'controls'}, h('div',{class:'ctl-l'}, calNav()), done);
-  return [head, activitiesBlock(), controls, ...renderCalendar(all, null, true)];
+  return [head, activitiesBlock(), paintBar(), controls, ...renderCalendar(all, null, true)];
 }
 
-/* ---------- school schedule: which classes meet on which days ---------- */
+/* ---------- school schedule: day labels (A/B, Gold/Blue, Anchor/16/27…) and the classes on each ---------- */
 const WD = ['Sunday','Monday','Tuesday','Wednesday','Thursday','Friday','Saturday'];
+const LABEL_COLORS = [['gold','Gold','#c9a227'],['blue','Blue','#4f7cb8'],['red','Red','#c0504d'],['green','Green','#5b9a68'],
+  ['purple','Purple','#8a6bbf'],['pink','Pink','#d0709a'],['orange','Orange','#d9822b'],['teal','Teal','#3a9a9a'],['gray','Gray','#7d7887']];
+const labelColor = t => (LABEL_COLORS.find(c=>c[0]===t.color)||LABEL_COLORS[8])[2];
 let dtCache = {key:null, map:new Map()};
-function isOffDay(sch, ds){ return (sch.off||[]).some(o => ds>=o.from && ds<=(o.to||o.from)); }
+const typeById = (sch, id) => (sch.types||[]).find(t=>t.id===id) || null;
 function dayTypeOn(ds){
   const sch = state.schedule; if(!sch || !(sch.types||[]).length) return null;
   const key = JSON.stringify(sch); if(dtCache.key!==key) dtCache = {key, map:new Map()};
   if(dtCache.map.has(ds)) return dtCache.map.get(ds);
   const r = computeDayType(sch, ds); dtCache.map.set(ds, r); return r;
 }
-const typeById = (sch, id) => (sch.types||[]).find(t=>t.id===id) || null;
-function rotates(sch, ds){
-  const dow = parse(ds).getDay();
-  return (sch.days||[1,2,3,4,5]).includes(dow) && !isOffDay(sch, ds) && !(sch.overrides||{})[ds] && !(sch.fixed||{})[dow];
-}
+const isSchoolDay = ds => ![0,6].includes(parse(ds).getDay());
+// a day counts toward the rotation if it's a weekday that hasn't been set by hand
+const rotates = (sch, ds) => isSchoolDay(ds) && !(sch.overrides||{})[ds];
 function computeDayType(sch, ds){
-  const dow = parse(ds).getDay();
   const ov = (sch.overrides||{})[ds];
   if(ov==='off') return {off:true};
   if(ov) return typeById(sch, ov);
-  if(!(sch.days||[1,2,3,4,5]).includes(dow)) return null;
-  if(isOffDay(sch, ds)) return {off:true};
-  if(sch.mode==='same') return sch.types[0];
-  if(sch.mode==='weekly') return typeById(sch, (sch.weekly||{})[dow]);
-  const fx = (sch.fixed||{})[dow]; if(fx) return typeById(sch, fx);
-  const order = (sch.order||[]).filter(id=>typeById(sch,id) && !Object.values(sch.fixed||{}).includes(id));
-  if(!order.length || !sch.start || !sch.start.date) return null;
-  let idx = Math.max(0, order.indexOf(sch.start.type));
-  // count rotating school days between the start date and this day (weekends, days off and fixed days don't count)
-  let n = 0;
-  if(ds >= sch.start.date){ for(let d=sch.start.date; d<ds; d=addDays(d,1)) if(rotates(sch,d)) n++; }
-  else { for(let d=ds; d<sch.start.date; d=addDays(d,1)) if(rotates(sch,d)) n--; }
-  const L = order.length; return typeById(sch, order[((idx + n) % L + L) % L]);
+  if(!isSchoolDay(ds)) return null;
+  if(sch.mode==='weekly') return typeById(sch, (sch.weekly||{})[parse(ds).getDay()]);
+  if(sch.mode==='manual') return null;
+  // take turns, starting on a chosen day
+  const start = sch.start && sch.start.date; if(!start) return null;
+  if(ds < start) return null;
+  const L = sch.types.length; let n = 0;
+  for(let d=start; d<ds; d=addDays(d,1)) if(rotates(sch,d)) n++;
+  return sch.types[n % L];
 }
-const periodOf = c => String(c.period||'').trim();
 function classesOn(ds){
   const dt = dayTypeOn(ds); if(!dt || dt.off) return [];
-  const per = new Set((dt.periods||[]).map(String));
-  return sortedClasses().filter(c=>periodOf(c) && per.has(periodOf(c))).sort((a,b)=>periodOf(a).localeCompare(periodOf(b), undefined, {numeric:true}));
+  const ids = new Set(dt.classes||[]);
+  return sortedClasses().filter(c=>ids.has(c.id));
 }
 function nextClassDate(classId, from){
-  const c = classById(classId); if(!c || !periodOf(c) || !state.schedule) return null;
-  for(let i=1;i<=45;i++){ const d = addDays(from,i), dt = dayTypeOn(d); if(dt && !dt.off && (dt.periods||[]).map(String).includes(periodOf(c))) return d; }
+  if(!state.schedule) return null;
+  for(let i=1;i<=45;i++){ const d = addDays(from,i), dt = dayTypeOn(d); if(dt && !dt.off && (dt.classes||[]).includes(classId)) return d; }
   return null;
 }
 function scheduleSummary(){
   const sch = state.schedule; if(!sch) return '';
   const names = (sch.types||[]).map(t=>t.name).join(', ');
-  return sch.mode==='same' ? 'Same classes every day' : sch.mode==='weekly' ? `By weekday: ${names}` : `Rotating: ${(sch.order||[]).map(id=>typeById(sch,id)?.name).filter(Boolean).join(' → ')}`;
+  return sch.mode==='weekly' ? `${names} (by weekday)` : sch.mode==='manual' ? `${names} (set on the calendar)` : `${names} (taking turns)`;
 }
-function schoolBlock(ds, onCalendar){
+function paintDay(ds){
+  const sch = state.schedule, o = {...(sch.overrides||{})};
+  if(state.paint==='clear') delete o[ds]; else o[ds] = state.paint;
+  state.schedule = {...sch, overrides:o}; persist(); render();
+}
+function paintBar(){
+  const sch = state.schedule;
+  if(!sch) return state.classes.length ? h('div',{style:'margin-top:12px;display:flex;align-items:center;gap:10px;flex-wrap:wrap'},
+    h('button',{class:'btn sm',onclick:openScheduleEditor},'+ Add my school schedule'), h('span',{class:'hint',style:'margin:0'},'A/B days, Gold/Blue, Anchor/16/27… and which classes are on each.')) : null;
+  const btn = (v, label, color) => h('button',{type:'button','aria-pressed':String(state.paint===v),style: color && state.paint!==v ? `border:2px solid ${color}` : (color ? `background:${color};color:#fff` : null),
+    onclick:()=>{ state.paint = state.paint===v ? null : v; render(); }}, label);
+  return h('section',{class:'quick',style:'margin-top:12px;padding:12px 14px'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'},
+      h('p',{class:'quick-h',style:'margin:0;font-size:15px!important'}, state.paint ? 'Tap days on the calendar to label them' : 'School days'),
+      state.paint ? h('button',{class:'btn sm primary',onclick:()=>{ state.paint=null; render(); toast('Saved'); }},'Done') : h('button',{class:'btn sm',onclick:openScheduleEditor},'Edit schedule')),
+    h('div',{class:'qshort',style:'margin-top:8px'},
+      ...sch.types.map(t=>btn(t.id, t.name, labelColor(t))),
+      btn('off','No school'), btn('clear','Back to normal')),
+    !state.paint ? h('p',{class:'hint',style:'margin:6px 0 0'},'Pick a label, then tap days to set them, like a snow day, a holiday, or a changed day.') : null);
+}
+function schoolBlock(ds){
   const sch = state.schedule; if(!sch) return null;
-  const dt = dayTypeOn(ds), dow = parse(ds).getDay();
-  if(!dt && !(sch.days||[1,2,3,4,5]).includes(dow)) return null;
-  const change = onCalendar ? h('select',{class:'qdate',id:'dayOverride','aria-label':'Change this day',style:'margin-left:auto',onchange:e=>{
-      const v = e.target.value; const o = {...(sch.overrides||{})};
-      if(v==='auto') delete o[ds]; else o[ds]=v;
-      state.schedule = {...sch, overrides:o}; persist(); render(); toast(v==='auto' ? 'Back to the normal schedule' : 'Day changed'); }},
-      h('option',{value:'auto',selected:!(sch.overrides||{})[ds]||null},'Normal schedule'),
-      ...(sch.types||[]).map(t=>h('option',{value:t.id,selected:(sch.overrides||{})[ds]===t.id||null},`Change to ${t.name} day`)),
-      h('option',{value:'off',selected:(sch.overrides||{})[ds]==='off'||null},'No school this day')) : null;
-  if(!dt) return h('div',{class:'school'}, h('b',null,'No day type set'), change);
-  if(dt.off) return h('div',{class:'school'}, h('b',null,'No school'), change);
+  const dt = dayTypeOn(ds);
+  if(!dt) return null;
+  if(dt.off) return h('div',{class:'school'}, h('b',null,'No school'));
   const cls = classesOn(ds);
-  return h('div',{class:'school'}, h('b',null, sch.mode==='same' ? 'School day' : `${dt.name} day`),
-    ...cls.map(c=>h('span',{class:'cl'}, h('i',{class:`sw-${c.color}`}), h('small',null,'P'+periodOf(c)), c.name)),
-    !cls.length ? h('span',{class:'hint',style:'margin:0'},'Add periods to your classes (Settings → School schedule) to see which ones meet.') : null,
-    change);
+  return h('div',{class:'school'}, h('span',{class:'dtype',style:`background:${labelColor(dt)};color:#fff;font-size:13px;padding:2px 10px;margin:0;max-width:none`}, dt.name),
+    ...cls.map(c=>h('span',{class:'cl'}, h('i',{class:`sw-${c.color}`}), c.name)),
+    !cls.length ? h('span',{class:'hint',style:'margin:0'},'No classes ticked for this label yet.') : null);
 }
 
 function openScheduleEditor(){
   const uid = () => Math.random().toString(36).slice(2,8);
-  const cur = state.schedule ? JSON.parse(JSON.stringify(state.schedule)) : null;
-  const allPer = () => { const set = new Set(sch.periods||[]); state.classes.forEach(c=>{ if(periods[c.id]) set.add(periods[c.id]); }); return [...set].filter(Boolean).sort((a,b)=>a.localeCompare(b,undefined,{numeric:true})); };
-  const periods = Object.fromEntries(state.classes.map(c=>[c.id, periodOf(c)]));
-  const sch = cur || {mode:'rotate', days:[1,2,3,4,5], periods:['1','2','3','4','5','6','7','8'], types:[], order:[], fixed:{}, weekly:{}, start:{date:todayIso(), type:''}, off:[], overrides:{}};
-  sch.fixed = sch.fixed||{}; sch.weekly = sch.weekly||{}; sch.off = sch.off||[]; sch.order = sch.order||[]; sch.start = sch.start||{date:todayIso(),type:''};
-  const PRESETS = {
-    anchor: () => { const P = allPer().length ? allPer() : ['1','2','3','4','5','6','7','8'];
-      const pairs = [['1','6'],['2','7'],['3','8'],['4','5']];
-      const types = [{id:uid(), name:'Anchor', periods:[...P]}, ...pairs.map(pr=>({id:uid(), name:pr.join(''), periods:P.filter(x=>!pr.includes(x))}))];
-      return {mode:'rotate', types, order:types.map(t=>t.id), fixed:{}}; },
-    ab: () => { const t=[{id:uid(),name:'A',periods:[]},{id:uid(),name:'B',periods:[]}]; return {mode:'rotate', types:t, order:t.map(x=>x.id), fixed:{}}; },
-    gold: () => { const t=[{id:uid(),name:'Gold',periods:[]},{id:uid(),name:'Blue',periods:[]}]; return {mode:'rotate', types:t, order:t.map(x=>x.id), fixed:{}}; },
-    same: () => ({mode:'same', types:[{id:uid(), name:'School', periods: allPer().length ? allPer() : ['1','2','3','4','5','6','7','8']}], order:[], fixed:{}}),
-  };
-  const box = h('div',{class:'modal wide',role:'dialog','aria-label':'School schedule'});
-  const offFrom = {v:todayIso()}, offTo = {v:''};
+  const sch = state.schedule ? JSON.parse(JSON.stringify(state.schedule)) : {mode:'rotate', types:[], weekly:{}, start:{date:todayIso()}, overrides:{}};
+  // older schedules used periods: turn them into class lists
+  sch.types.forEach(t=>{ if(!t.classes){ const per = new Set((t.periods||[]).map(String)); t.classes = state.classes.filter(c=>per.has(String(c.period||''))).map(c=>c.id); } if(!t.color) t.color='gray'; });
+  if(!['rotate','weekly','manual'].includes(sch.mode)) sch.mode='rotate';
+  sch.weekly = sch.weekly||{}; sch.start = sch.start||{date:todayIso()};
+  const all = () => state.classes.map(c=>c.id);
+  const preset = list => { sch.types = list.map(([name,color])=>({id:uid(), name, color, classes:all()})); };
+  const box = h('div',{class:'modal wide',role:'dialog','aria-label':'My school schedule'});
 
   function draw(){
-    const P = allPer();
-    const step = (title, lead, ...kids) => h('section',{class:'sch-step'}, h('h3',null,title), lead ? h('p',{class:'lead'},lead) : null, ...kids);
-    const mode = h('div',{class:'choice'}, ...[
-      ['rotate','Rotating days','The day type moves to the next one each school day, like A/B, Gold/Blue, or Anchor → 1-6 → 2-7 → 3-8 → 4-5. Days off don’t break the rotation.'],
-      ['weekly','Same day type on the same weekday','For example, Monday is always Gold and Tuesday is always Blue.'],
-      ['same','Same classes every day','Every class meets every school day.']].map(([k,l,sub])=>h('label',null,
-        h('input',{type:'radio',name:'schMode',value:k,checked:sch.mode===k||null,onchange:()=>{ sch.mode=k; if(k==='same' && !sch.types.length) Object.assign(sch, PRESETS.same()); draw(); }}),
-        h('span',null,h('b',null,l),h('small',null,sub)))));
-    const presets = sch.mode==='same' ? null : h('div',{class:'qshort',style:'margin-top:10px'}, h('span',{class:'hint',style:'margin:0 4px 0 0'},'Start from:'),
-      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.anchor(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'Anchor + 16, 27, 38, 45'),
-      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.ab(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'A / B days'),
-      h('button',{type:'button',onclick:()=>{ Object.assign(sch, PRESETS.gold(), {mode:sch.mode}); if(sch.mode==='weekly') autoWeekly(); draw(); }},'Gold / Blue days'));
-    function autoWeekly(){ sch.weekly={}; [1,2,3,4,5].forEach((d,i)=>{ sch.weekly[d] = sch.types[i % sch.types.length]?.id; }); }
+    const labels = h('div',null, ...sch.types.map((t,i)=>h('div',{class:'dt-row',style:'grid-template-columns:minmax(0,150px) minmax(0,1fr) auto'},
+      h('div',{style:'display:flex;flex-direction:column;gap:6px;min-width:0'},
+        h('input',{type:'text',class:'set-in',id:'ln-'+t.id,value:t.name,maxlength:'16','aria-label':'Label',oninput:e=>{ t.name=e.target.value; }}),
+        h('div',{style:'display:flex;gap:4px;flex-wrap:wrap'}, ...LABEL_COLORS.map(([k,l,hex])=>h('button',{type:'button',title:l,'aria-label':l+' color','aria-pressed':String(t.color===k),
+          style:`width:20px;height:20px;border-radius:50%;padding:0;background:${hex};border:${t.color===k?'3px solid var(--ink)':'2px solid var(--sheet)'}`,onclick:()=>{ t.color=k; draw(); }})))),
+      h('div',{class:'qshort'}, ...sortedClasses().map(c=>h('button',{type:'button','aria-pressed':String(t.classes.includes(c.id)),
+          onclick:()=>{ t.classes = t.classes.includes(c.id) ? t.classes.filter(x=>x!==c.id) : [...t.classes, c.id]; draw(); }}, c.name))),
+      h('div',{style:'display:flex;flex-direction:column;gap:4px'},
+        h('button',{type:'button',class:'sadd',disabled:i===0||null,title:'Move up',onclick:()=>{ [sch.types[i-1],sch.types[i]]=[sch.types[i],sch.types[i-1]]; draw(); }},'↑'),
+        h('button',{type:'button',class:'sadd',disabled:i===sch.types.length-1||null,title:'Move down',onclick:()=>{ [sch.types[i+1],sch.types[i]]=[sch.types[i],sch.types[i+1]]; draw(); }},'↓'),
+        h('button',{type:'button',class:'sadd',style:'color:var(--late)',title:'Remove',onclick:()=>{ sch.types.splice(i,1); draw(); }},'×')))),
+      h('button',{type:'button',class:'sadd',onclick:()=>{ sch.types.push({id:uid(), name:'', color:LABEL_COLORS[sch.types.length % 8][0], classes:all()}); draw(); setTimeout(()=>document.getElementById('ln-'+sch.types[sch.types.length-1].id)?.focus(),30); }},'+ Add a label'));
+    const presets = h('div',{class:'qshort',style:'margin:0 0 8px'}, h('span',{class:'hint',style:'margin:0 4px 0 0'},'Quick start:'),
+      h('button',{type:'button',onclick:()=>{ preset([['A','blue'],['B','red']]); draw(); }},'A / B'),
+      h('button',{type:'button',onclick:()=>{ preset([['Gold','gold'],['Blue','blue']]); draw(); }},'Gold / Blue'),
+      h('button',{type:'button',onclick:()=>{ preset([['Anchor','purple'],['16','blue'],['27','green'],['38','orange'],['45','pink']]); draw(); }},'Anchor, 16, 27, 38, 45'));
 
-    const perRows = state.classes.length ? h('div',null, ...sortedClasses().map(c=>h('div',{class:'per-row'},
-        h('span',{class:'tag',style:'font-weight:700'}, h('i',{class:`sw-${c.color}`}), c.name),
-        h('input',{class:'set-in',id:'per-'+c.id,maxlength:'6',placeholder:'Period',value:periods[c.id]||'',oninput:e=>{ periods[c.id]=e.target.value.trim(); },onchange:()=>draw()}))))
-      : h('p',{class:'hint'},'Add your classes first on the Classes page.');
-    const perList = h('div',{class:'qrow',style:'margin-top:8px'}, h('span',{class:'hint',style:'margin:0'},'Periods your school has:'),
-      h('input',{class:'set-in',id:'schPeriods',value:(sch.periods||[]).join(', '),placeholder:'1, 2, 3, 4, 5, 6, 7, 8',style:'flex:1;min-width:160px',
-        onchange:e=>{ sch.periods = e.target.value.split(/[\s,]+/).map(x=>x.trim()).filter(Boolean); draw(); }}));
+    const when = h('div',{class:'choice'}, ...[
+      ['rotate','They take turns','Each school day is the next label in your list. Weekends are skipped.'],
+      ['weekly','Same label on the same weekday','Like every Monday is Gold.'],
+      ['manual','I’ll tap each day on the calendar','Set days yourself on the Calendar page.']].map(([k,l,sub])=>h('label',null,
+        h('input',{type:'radio',name:'schWhen',value:k,checked:sch.mode===k||null,onchange:()=>{ sch.mode=k; draw(); }}), h('span',null,h('b',null,l),h('small',null,sub)))));
+    let detail = null;
+    if(sch.mode==='rotate') detail = h('div',{class:'qrow',style:'margin-top:10px'}, h('span',{style:'font-weight:700'},'The first label is on'),
+      h('input',{type:'date',class:'qdate',id:'schStart',value:sch.start.date||todayIso(),onchange:e=>{ if(e.target.value){ sch.start.date=e.target.value; draw(); } }}),
+      h('span',{class:'hint',style:'margin:0'},'(use the arrows to put labels in order)'));
+    if(sch.mode==='weekly') detail = h('div',{style:'margin-top:10px'}, ...[1,2,3,4,5].map(d=>h('div',{class:'per-row'}, h('span',{style:'font-weight:700'},WD[d]),
+      h('select',{class:'set-in',id:'wk-'+d,onchange:e=>{ sch.weekly[d]=e.target.value; draw(); }}, h('option',{value:''},'No label'), ...sch.types.map(t=>h('option',{value:t.id,selected:sch.weekly[d]===t.id||null},t.name||'(no name)'))))));
 
-    const typeRows = h('div',null, ...sch.types.map(tp=>h('div',{class:'dt-row'},
-        h('input',{type:'text',class:'set-in',id:'tn-'+tp.id,value:tp.name,maxlength:'20','aria-label':'Day name',oninput:e=>{ tp.name=e.target.value; }}),
-        h('div',{class:'qshort'}, ...P.map(pp=>h('button',{type:'button','aria-pressed':String((tp.periods||[]).includes(pp)),title:`Period ${pp}`,
-          onclick:()=>{ const set=new Set(tp.periods||[]); set.has(pp)?set.delete(pp):set.add(pp); tp.periods=[...set]; draw(); }}, pp)),
-          P.length ? h('button',{type:'button',onclick:()=>{ tp.periods = (tp.periods||[]).length===P.length ? [] : [...P]; draw(); }},(tp.periods||[]).length===P.length?'None':'All') : h('span',{class:'hint',style:'margin:0'},'Add periods above first')),
-        sch.mode==='same' ? h('span') : h('button',{type:'button',class:'btn sm danger',onclick:()=>{ sch.types=sch.types.filter(x=>x!==tp); sch.order=sch.order.filter(id=>id!==tp.id); draw(); }},'Remove'))),
-      sch.mode==='same' ? null : h('button',{type:'button',class:'sadd',onclick:()=>{ const t={id:uid(),name:'Day '+(sch.types.length+1),periods:[]}; sch.types.push(t); sch.order.push(t.id); draw(); }},'+ Add a day type'));
-
-    let pattern = null;
-    if(sch.mode==='weekly'){
-      pattern = step('4. Which day is which?', null, h('div',null, ...[1,2,3,4,5].map(d=>h('div',{class:'per-row'}, h('span',{style:'font-weight:700'},WD[d]),
-        h('select',{class:'set-in',id:'wk-'+d,onchange:e=>{ sch.weekly[d]=e.target.value; }}, h('option',{value:''},'No school'), ...sch.types.map(tp=>h('option',{value:tp.id,selected:sch.weekly[d]===tp.id||null},tp.name)))))));
-    } else if(sch.mode==='rotate'){
-      sch.order = [...sch.order.filter(id=>typeById(sch,id)), ...sch.types.filter(t=>!sch.order.includes(t.id)).map(t=>t.id)];
-      const rot = sch.order.filter(id=>!Object.values(sch.fixed).includes(id));
-      if(!rot.includes(sch.start.type)) sch.start.type = rot[0] || '';
-      pattern = step('4. How does it rotate?', 'Put the days in order. Use the arrows to move them.',
-        h('ol',{style:'margin:0;padding-left:20px'}, ...rot.map((id,i)=>h('li',{style:'padding:3px 0'}, h('b',null, typeById(sch,id).name), ' ',
-          h('button',{type:'button',class:'sadd',disabled:i===0||null,onclick:()=>{ const j=sch.order.indexOf(id), k=sch.order.indexOf(rot[i-1]); [sch.order[j],sch.order[k]]=[sch.order[k],sch.order[j]]; draw(); }},'↑'),
-          h('button',{type:'button',class:'sadd',disabled:i===rot.length-1||null,onclick:()=>{ const j=sch.order.indexOf(id), k=sch.order.indexOf(rot[i+1]); [sch.order[j],sch.order[k]]=[sch.order[k],sch.order[j]]; draw(); }},'↓')))),
-        h('div',{class:'qrow',style:'margin-top:10px'}, h('span',{style:'font-weight:700'},'Pick a day you know:'),
-          h('input',{type:'date',class:'qdate',id:'schStart',value:sch.start.date,onchange:e=>{ if(e.target.value){ sch.start.date=e.target.value; draw(); } }}),
-          h('span',null,'is a'),
-          h('select',{class:'qdate',id:'schStartType',onchange:e=>{ sch.start.type=e.target.value; }}, ...rot.map(id=>h('option',{value:id,selected:sch.start.type===id||null},typeById(sch,id).name))),
-          h('span',null,'day')),
-        h('details',{style:'margin-top:10px'}, h('summary',{style:'cursor:pointer;font-weight:700'},'Is one weekday always the same? (optional)'),
-          h('p',{class:'hint'},'For example, if every Monday is an Anchor day and the other days rotate.'),
-          ...[1,2,3,4,5].map(d=>h('div',{class:'per-row'}, h('span',null,WD[d]),
-            h('select',{class:'set-in',id:'fx-'+d,onchange:e=>{ if(e.target.value) sch.fixed[d]=e.target.value; else delete sch.fixed[d]; draw(); }},
-              h('option',{value:''},'Rotates'), ...sch.types.map(tp=>h('option',{value:tp.id,selected:sch.fixed[d]===tp.id||null},`Always ${tp.name}`)))))));
-    }
-
-    const offChips = h('div',{class:'offlist'}, ...sch.off.slice().sort((a,b)=>a.from.localeCompare(b.from)).map(o=>h('span',{class:'tchip'},
-      h('span',null, o.to && o.to!==o.from ? `${dayLabel(o.from)} – ${dayLabel(o.to)}` : dayLabel(o.from)),
-      h('button',{type:'button','aria-label':'Remove',onclick:()=>{ sch.off = sch.off.filter(x=>x!==o); draw(); }},'×'))));
-    const offAdd = h('div',{class:'qrow'},
-      h('input',{type:'date',class:'qdate',id:'offFrom',value:offFrom.v,onchange:e=>{offFrom.v=e.target.value;}}), h('span',null,'to'),
-      h('input',{type:'date',class:'qdate',id:'offTo',value:offTo.v,onchange:e=>{offTo.v=e.target.value;}}), h('span',{class:'hint',style:'margin:0'},'(optional)'),
-      h('button',{type:'button',class:'btn sm',onclick:()=>{ if(!offFrom.v) return; sch.off.push({from:offFrom.v, to: offTo.v && offTo.v>offFrom.v ? offTo.v : ''}); offTo.v=''; draw(); }},'Add'));
-
-    const preview = (()=>{ // next 10 school days
-      const save = state.schedule; state.schedule = {...sch, types:sch.types.map(t=>({...t}))}; dtCache = {key:null,map:new Map()};
-      const rows=[]; for(let i=0, d=todayIso(); rows.length<10 && i<40; i++, d=addDays(d,1)){ const dt=dayTypeOn(d); if(dt) rows.push(`${parse(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}: ${dt.off?'No school':dt.name}`); }
+    const preview = (()=>{
+      if(sch.mode==='manual') return null;
+      const save = state.schedule; state.schedule = JSON.parse(JSON.stringify(sch)); dtCache = {key:null,map:new Map()};
+      const rows=[]; for(let i=0, d=todayIso(); rows.length<8 && i<30; i++, d=addDays(d,1)){ const dt=dayTypeOn(d); if(dt) rows.push(`${parse(d).toLocaleDateString(undefined,{weekday:'short',month:'short',day:'numeric'})}: ${dt.off?'No school':dt.name}`); }
       state.schedule = save; dtCache = {key:null,map:new Map()};
-      return rows.length ? h('p',{class:'hint',style:'margin:6px 0 0'}, 'Coming up: ' + rows.join(' · ')) : null; })();
+      return rows.length ? h('p',{class:'hint',style:'margin:8px 0 0'}, 'Coming up: ' + rows.join(' · ')) : null; })();
 
     box.replaceChildren(
-      h('h2',null,'School schedule'),
-      step('1. How does your school’s schedule work?', null, mode, presets),
-      step('2. What period is each class?', 'Use the same names your school uses: 1–8, A1–A4, and so on.', perRows, perList),
-      sch.mode==='same' ? step('3. Which periods meet?', null, typeRows) : step('3. Your day types', 'Name each kind of day and tap the periods that meet on it.', typeRows),
-      pattern,
-      step('5. Days off (optional)', 'Holidays and breaks. On a rotation, the next school day picks up where it left off.', offAdd, offChips),
-      preview,
+      h('h2',null,'My school schedule'),
+      h('section',{class:'sch-step'}, h('h3',null,'1. Your day labels'), h('p',{class:'lead'},'Make a label for each kind of school day, pick its color, and tap the classes you have that day.'), presets, labels),
+      h('section',{class:'sch-step'}, h('h3',null,'2. When is each label?'), when, detail, preview,
+        h('p',{class:'hint',style:'margin:8px 0 0'},'Snow day or holiday? On the Calendar page, tap “No school”, then tap that day.')),
       h('div',{class:'modal-foot',style:'margin-top:14px'},
-        state.schedule ? h('button',{type:'button',class:'btn danger',onclick:()=>{ state.schedule=null; persist(); closeModal(); render(); toast('School schedule removed'); }},'Remove schedule') : h('span'),
-        h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'button',class:'btn primary',onclick:save},'Save schedule'))));
+        state.schedule ? h('button',{type:'button',class:'btn danger',onclick:()=>{ state.schedule=null; state.paint=null; persist(); closeModal(); render(); toast('Schedule removed'); }},'Remove schedule') : h('span'),
+        h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'button',class:'btn primary',onclick:save},'Save'))));
   }
-  async function save(){
-    if(!sch.types.length){ toast('Add at least one day type, or pick “Same classes every day”.'); return; }
-    sch.types.forEach(t=>{ t.name = (t.name||'').trim() || 'Day'; });
-    for(const c of state.classes){ const v = periods[c.id]||''; if(periodOf(c)!==v) c.period = v; }
-    sch.periods = allPer();
-    state.schedule = JSON.parse(JSON.stringify(sch)); persist(); closeModal(); render(); toast('School schedule saved');
+  function save(){
+    sch.types = sch.types.filter(t=>(t.name||'').trim());
+    if(!sch.types.length){ toast('Add at least one label with a name.'); draw(); return; }
+    sch.types.forEach(t=>{ t.name = t.name.trim(); delete t.periods; });
+    state.schedule = sch; persist(); closeModal();
+    if(sch.mode==='manual'){ state.page='calendar'; state.paint = sch.types[0].id; }
+    render(); toast(sch.mode==='manual' ? 'Now tap days on the calendar to label them' : 'Schedule saved');
   }
   draw(); showModal(box);
 }
@@ -1566,9 +1530,9 @@ function renderSettings(){
       row('Light or dark', null, mode),
       row('App icon', 'Used on the browser tab, your Home Screen and notifications. Its colors follow your theme.', icons),
       isInstalled() || isIOS() || /Android/i.test(navigator.userAgent) ? h('p',{class:'hint',style:'margin:0'},'Already added My Planner to your Home Screen? To see a new icon there, remove it and add it again.') : null),
-    sec('School schedule', state.schedule ? null : 'Tell the planner which classes meet on which days: A/B days, Gold/Blue, rotations like Anchor, 1-6, 2-7… It shows on your calendar and Today page.',
+    sec('School schedule', state.schedule ? null : 'Add labels for your school days (like A/B, Gold/Blue, or Anchor, 16, 27…) and which classes you have on each. They show on your calendar and Today page.',
       state.schedule ? row('Your schedule', scheduleSummary(), h('button',{class:'btn sm',onclick:openScheduleEditor},'Edit schedule'))
-        : row('Set up', null, h('button',{class:'btn sm primary',onclick:openScheduleEditor},'Set up my schedule'))),
+        : row('Add your schedule', null, h('button',{class:'btn sm primary',onclick:openScheduleEditor},'Add my schedule'))),
     sec('Planner', null,
       row('Planner name', 'Shown at the top of the page.', nameIn),
       row('Open to', 'The page you see first.', start)),
@@ -1790,7 +1754,7 @@ function renderToday(){
       h('h3',null,'Nothing on your list'),
       h('p',null,'This list fills in from your assignments, tests and study plans. Add homework and tests on the Classes page, or add your own to-do above.'));
 
-  return [head, strip, schoolBlock(ds, false), scheduleBlock(ds, true), add].concat(body).flat().filter(Boolean);
+  return [head, strip, schoolBlock(ds), scheduleBlock(ds, true), add].concat(body).flat().filter(Boolean);
 }
 
 /* ---------- study tracker ---------- */
@@ -2053,7 +2017,6 @@ function openClassModal(cls){
   let color = cls ? cls.color : nextColor();
   const name = h('input',{id:'cName',maxlength:'60',placeholder:'e.g. AP Biology',value:cls?cls.name:''});
   const teacher = h('input',{id:'cTeacher',maxlength:'80',placeholder:'Teacher or room (optional)',value:cls?cls.teacher||'':''});
-  const period = h('input',{id:'cPeriod',maxlength:'6',placeholder:'e.g. 3',value:cls?cls.period||'':'',style:'max-width:120px'});
   const err = h('p',{class:'err',hidden:true});
   const sw = h('div',{class:'swatches',role:'group','aria-label':'Color'});
   const isCustom = () => /^x[0-9a-f]{6}$/i.test(color);
@@ -2083,7 +2046,7 @@ function openClassModal(cls){
   const form = h('form',{class:'modal',onsubmit:async e=>{
     e.preventDefault();
     const nm = name.value.trim(); if(!nm){ err.hidden=false; err.textContent='Give the class a name.'; return; }
-    const data = {name:nm, color, teacher:teacher.value.trim(), period:period.value.trim()};
+    const data = {name:nm, color, teacher:teacher.value.trim()};
     const btn = form.querySelector('[type=submit]'); btn.disabled=true;
     const ok = cls ? await store.update('classes',cls.id,data) : await store.add('classes',{...data, created:Date.now()});
     btn.disabled=false;
@@ -2092,7 +2055,6 @@ function openClassModal(cls){
     h('h2',null, cls?'Edit class':'Add a class'),
     h('div',{class:'field'},h('label',{for:'cName'},'Class name'),name),
     h('div',{class:'field'},h('label',{for:'cTeacher'},'Details'),teacher),
-    h('div',{class:'field'},h('label',{for:'cPeriod'},'Period (for your school schedule)'),period),
     h('div',{class:'field'},h('span',{class:'lbl'},'Class color (shades change with your theme)'),sw,customRow),
     err,
     h('div',{class:'modal-foot'}, del,
