@@ -1224,19 +1224,54 @@ function dayTypeOn(ds){
 const isSchoolDay = ds => ![0,6].includes(parse(ds).getDay());
 // a day counts toward the rotation if it's a weekday that hasn't been set by hand
 const rotates = (sch, ds) => isSchoolDay(ds) && !(sch.overrides||{})[ds];
+// the label a weekday would normally have, ignoring days off
+function normalLabel(sch, ds){
+  if(sch.mode==='weekly') return (sch.weekly||{})[parse(ds).getDay()] || null;
+  const start = sch.start && sch.start.date; if(!start || ds < start || !sch.types.length) return null;
+  const keepWeek = sch.offRule==='week';
+  let n = 0;
+  for(let d=start; d<ds; d=addDays(d,1)){
+    if(!isSchoolDay(d)) continue;
+    const ov = (sch.overrides||{})[d];
+    if(ov && ov!=='off') continue;              // a day set to a label by hand doesn't move the rotation
+    if(ov==='off' && !keepWeek) continue;       // "pick up where it left off": days off don't count
+    n++;
+  }
+  return sch.types[n % sch.types.length].id;
+}
 function computeDayType(sch, ds){
   const ov = (sch.overrides||{})[ds];
   if(ov==='off') return {off:true};
   if(ov) return typeById(sch, ov);
-  if(!isSchoolDay(ds)) return null;
-  if(sch.mode==='weekly') return typeById(sch, (sch.weekly||{})[parse(ds).getDay()]);
-  if(sch.mode==='manual') return null;
-  // take turns, starting on a chosen day
-  const start = sch.start && sch.start.date; if(!start) return null;
-  if(ds < start) return null;
-  const L = sch.types.length; let n = 0;
-  for(let d=start; d<ds; d=addDays(d,1)) if(rotates(sch,d)) n++;
-  return sch.types[n % L];
+  if(!isSchoolDay(ds) || sch.mode==='manual') return null;
+  if(sch.offRule!=='week') return typeById(sch, normalLabel(sch, ds));
+  // "keep the week the same": this week's labels go to the days there IS school, dropping the chosen label first
+  const mon = addDays(ds, 1 - parse(ds).getDay());
+  const week = [0,1,2,3,4].map(i=>addDays(mon,i)).filter(d=>{ const o=(sch.overrides||{})[d]; return !o || o==='off'; });
+  const labels = week.map(d=>normalLabel(sch,d)).filter(Boolean);
+  const school = week.filter(d=>(sch.overrides||{})[d]!=='off');
+  while(labels.length > school.length){ let i = labels.indexOf(sch.dropFirst); if(i<0) i = 0; labels.splice(i,1); }
+  return typeById(sch, labels[school.indexOf(ds)]);
+}
+// school holidays for this school year (dates people can tick off)
+function holidayList(){
+  const Y = schoolStartYear(), Y2 = Y+1;
+  const nth = (y,m,dow,n) => { const d = new Date(y,m,1); const first = (dow - d.getDay() + 7) % 7 + 1; return iso(new Date(y,m,first + 7*(n-1))); };
+  const last = (y,m,dow) => { const d = new Date(y,m+1,0); return iso(new Date(y,m,d.getDate() - ((d.getDay()-dow+7)%7))); };
+  const easter = y => { const a=y%19,b=Math.floor(y/100),c=y%100,d=Math.floor(b/4),e=b%4,f=Math.floor((b+8)/25),g=Math.floor((b-f+1)/3),h2=(19*a+b-d-g+15)%30,i=Math.floor(c/4),k=c%4,l=(32+2*e+2*i-h2-k)%7,m=Math.floor((a+11*h2+22*l)/451),mo=Math.floor((h2+l-7*m+114)/31),da=((h2+l-7*m+114)%31)+1; return iso(new Date(y,mo-1,da)); };
+  const thx = nth(Y,10,4,4);
+  return [
+    ['labor','Labor Day', nth(Y,8,1,1)],
+    ['indig','Indigenous Peoples’ / Columbus Day', nth(Y,9,1,2)],
+    ['elect','Election Day', addDays(nth(Y,10,1,1),1)],
+    ['vet','Veterans Day', `${Y}-11-11`],
+    ['thx','Thanksgiving break', addDays(thx,-1), addDays(thx,1)],
+    ['winter','Winter break (check your school’s dates)', `${Y}-12-21`, `${Y2}-01-01`],
+    ['mlk','Martin Luther King Jr. Day', nth(Y2,0,1,3)],
+    ['pres','Presidents’ Day', nth(Y2,1,1,3)],
+    ['goodfri','Good Friday', addDays(easter(Y2),-2)],
+    ['memorial','Memorial Day', last(Y2,4,1)],
+  ].map(([id,name,from,to])=>({id,name,from,to:to||from}));
 }
 function classesOn(ds){
   const dt = dayTypeOn(ds); if(!dt || dt.off) return [];
@@ -1273,15 +1308,23 @@ function paintBar(){
       btn('off','No school'), btn('clear','Back to normal')),
     !state.paint ? h('p',{class:'hint',style:'margin:6px 0 0'},'Pick a label, then tap days to set them, like a snow day, a holiday, or a changed day.') : null);
 }
+function setDayOff(ds, off){
+  const sch = state.schedule, o = {...(sch.overrides||{})};
+  if(off) o[ds]='off'; else delete o[ds];
+  state.schedule = {...sch, overrides:o}; persist(); render();
+  toast(off ? `No school on ${dayLabel(ds)}. The schedule adjusted.` : `${dayLabel(ds)} is a school day again`, off ? {label:'Undo', run:()=>setDayOff(ds,false)} : null);
+}
 function schoolBlock(ds){
   const sch = state.schedule; if(!sch) return null;
   const dt = dayTypeOn(ds);
   if(!dt) return null;
-  if(dt.off) return h('div',{class:'school'}, h('b',null,'No school'));
+  if(dt.off) return h('div',{class:'school'}, h('b',null,'No school'),
+    (sch.overrides||{})[ds]==='off' ? h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>setDayOff(ds,false)},'There is school') : null);
   const cls = classesOn(ds);
   return h('div',{class:'school'}, h('span',{class:'dtype',style:`background:${labelColor(dt)};color:#fff;font-size:13px;padding:2px 10px;margin:0;max-width:none`}, dt.name),
     ...cls.map(c=>h('span',{class:'cl'}, h('i',{class:`sw-${c.color}`}), c.name)),
-    !cls.length ? h('span',{class:'hint',style:'margin:0'},'No classes ticked for this label yet.') : null);
+    !cls.length ? h('span',{class:'hint',style:'margin:0'},'No classes ticked for this label yet.') : null,
+    h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>setDayOff(ds,true)},'No school this day'));
 }
 
 function openScheduleEditor(){
@@ -1335,8 +1378,28 @@ function openScheduleEditor(){
     box.replaceChildren(
       h('h2',null,'My school schedule'),
       h('section',{class:'sch-step'}, h('h3',null,'1. Your day labels'), h('p',{class:'lead'},'Make a label for each kind of school day, pick its color, and tap the classes you have that day.'), presets, labels),
-      h('section',{class:'sch-step'}, h('h3',null,'2. When is each label?'), when, detail, preview,
-        h('p',{class:'hint',style:'margin:8px 0 0'},'Snow day or holiday? On the Calendar page, tap “No school”, then tap that day.')),
+      h('section',{class:'sch-step'}, h('h3',null,'2. When is each label?'), when, detail),
+      sch.mode==='manual' ? null : h('section',{class:'sch-step'}, h('h3',null,'3. When there’s no school'),
+        h('div',{class:'choice'},
+          h('label',null, h('input',{type:'radio',name:'offRule',value:'shift',checked:sch.offRule!=='week'||null,onchange:()=>{ sch.offRule='shift'; draw(); }}),
+            h('span',null, h('b',null, sch.mode==='weekly' ? 'Just skip that day' : 'Pick up where it left off'),
+              h('small',null, sch.mode==='weekly' ? 'The other days keep their usual labels.' : 'The next school day gets the label that was missed, and everything after moves over.'))),
+          h('label',null, h('input',{type:'radio',name:'offRule',value:'week',checked:sch.offRule==='week'||null,onchange:()=>{ sch.offRule='week'; if(!sch.dropFirst) sch.dropFirst = sch.types[0]?.id; draw(); }}),
+            h('span',null, h('b',null,'Keep the rest of the week the same'),
+              h('small',null,'That week skips one label instead. Example: no school Tuesday, so Monday becomes the 16 day and the rest of the week stays the same.')))),
+        sch.offRule==='week' ? h('div',{class:'qrow',style:'margin-top:8px'}, h('span',{style:'font-weight:700'},'Label to skip first:'),
+          h('select',{class:'qdate',id:'dropFirst',onchange:e=>{ sch.dropFirst=e.target.value; draw(); }}, ...sch.types.map(t=>h('option',{value:t.id,selected:sch.dropFirst===t.id||null},t.name||'(no name)')))) : null,
+        h('p',{style:'font-weight:700;margin:14px 0 6px'},'Holidays (tick the ones you don’t have school):'),
+        h('div',{class:'choice',style:'display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:6px'}, ...holidayList().map(hd=>{
+          const on = (sch.holidays||[]).includes(hd.id);
+          return h('label',{style:'padding:6px 10px'}, h('input',{type:'checkbox',id:'hol-'+hd.id,checked:on||null,onchange:e=>{
+              const o = {...(sch.overrides||{})}; const set = new Set(sch.holidays||[]);
+              for(let d=hd.from; d<=hd.to; d=addDays(d,1)){ if(e.target.checked) o[d]='off'; else if(o[d]==='off') delete o[d]; }
+              e.target.checked ? set.add(hd.id) : set.delete(hd.id); sch.overrides=o; sch.holidays=[...set]; draw(); }}),
+            h('span',null, h('b',null,hd.name), h('small',null, hd.from===hd.to ? dayLabel(hd.from) : `${dayLabel(hd.from)} – ${dayLabel(hd.to)}`)));
+        })),
+        h('p',{class:'hint',style:'margin:8px 0 0'},'For any other day off (snow day, teacher day), click it on the calendar and press “No school this day”.')),
+      preview,
       h('div',{class:'modal-foot',style:'margin-top:14px'},
         state.schedule ? h('button',{type:'button',class:'btn danger',onclick:()=>{ state.schedule=null; state.paint=null; persist(); closeModal(); render(); toast('Schedule removed'); }},'Remove schedule') : h('span'),
         h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'button',class:'btn primary',onclick:save},'Save'))));
