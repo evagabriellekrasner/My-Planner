@@ -304,7 +304,9 @@ button{cursor:pointer}
 .todo-legend i{width:14px;height:14px;border-radius:4px;background:var(--imp);border:1px solid var(--imp-edge)}
 .subh{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:18px 0 0}
 
-.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.chip.sw-7,.chip.sw-8,.chip.sw-9,.chip.sw-10,.hl.sw-8,.hl.sw-9,.hl.sw-10{color:#fff!important}
+.toast-act{border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;font-weight:800;margin-left:12px;cursor:pointer}
+.toast{display:flex;align-items:center;gap:4px;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
 
 @media (max-width:760px){
   .layout{grid-template-columns:minmax(0,1fr);gap:14px}
@@ -483,9 +485,15 @@ function h(tag, attrs, ...kids){
   for(const k of kids.flat()){ if(k==null||k===false) continue; el.append(k.nodeType?k:document.createTextNode(String(k))); }
   return el;
 }
-function toast(msg){
-  const root = document.getElementById('toastRoot'); root.replaceChildren(h('div',{class:'toast',role:'status',text:msg}));
-  clearTimeout(toast.t); toast.t = setTimeout(()=>root.replaceChildren(),3200);
+function toast(msg, action){
+  const root = document.getElementById('toastRoot');
+  const btn = action ? h('button',{class:'toast-act',onclick:()=>{ root.replaceChildren(); clearTimeout(toast.t); action.run(); }}, action.label) : null;
+  root.replaceChildren(h('div',{class:'toast',role:'status'}, h('span',{text:msg}), btn));
+  clearTimeout(toast.t); toast.t = setTimeout(()=>root.replaceChildren(), action ? 6000 : 3200);
+}
+// Checking something off shows "Done" with an Undo button for 6 seconds.
+function checked(label, done, undo){
+  if(done) toast(`Checked off: ${label}`, {label:'Undo', run: async()=>{ await undo(); toast('Undone'); }});
 }
 
 /* ---------- storage ---------- */
@@ -1094,7 +1102,7 @@ function renderToday(){
     h('button',{class:'btn primary',onclick:addTodo},'Add'));
 
   const row = x => h('li',{class:'todo'+(x.imp&&!x.done?' imp':'')+(x.done?' done':'')},
-    h('input',{type:'checkbox',id:'td-'+x.key,checked:x.done||null,'aria-label':`Mark ${x.text} done`,onchange:e=>setDone(x,e.target.checked)}),
+    h('input',{type:'checkbox',id:'td-'+x.key,checked:x.done||null,'aria-label':`Mark ${x.text} done`,onchange:async e=>{ const v=e.target.checked; await setDone(x,v); checked(x.text, v, ()=>setDone(x,false)); }}),
     h('div',{style:'min-width:0'},
       x.kind==='item' ? h('button',{class:'tt',onclick:()=>openItemModal(x.ref)}, x.text) : h('label',{class:'tt',for:'td-'+x.key,text:x.text}),
       h('div',{class:'why'},
@@ -1194,7 +1202,7 @@ const toggleTask = (planId, date, taskId, done) => saveSessions(planId, ss => { 
 function taskRow(planId, date, task, withX){
   const id = `st-${planId}-${task.id}`;
   return h('li',{class:'stask'+(task.done?' done':'')},
-    h('input',{type:'checkbox',id,checked:task.done||null,onchange:e=>toggleTask(planId,date,task.id,e.target.checked)}),
+    h('input',{type:'checkbox',id,checked:task.done||null,onchange:async e=>{ const v=e.target.checked; await toggleTask(planId,date,task.id,v); checked(task.text, v, ()=>toggleTask(planId,date,task.id,false)); }}),
     h('label',{for:id,text:task.text}),
     withX ? h('button',{class:'x',title:'Remove task','aria-label':`Remove ${task.text}`,onclick:()=>saveSessions(planId, ss=>{ const s=ss.find(x=>x.date===date); if(s) s.tasks=s.tasks.filter(x=>x.id!==task.id); })},'×') : null);
 }
@@ -1351,7 +1359,7 @@ function itemRow(i, inLate){
   const showClass = state.sel==='all';
   return h('li',{class:'item'+(i.done?' done':'')},
     h('input',{type:'checkbox',id:'done-'+i.id,'aria-label':`Mark ${i.title} done`,checked:i.done||null,
-      onchange:e=>store.update('items',i.id,{done:e.target.checked})}),
+      onchange:async e=>{ const v=e.target.checked; await store.update('items',i.id,{done:v}); checked(i.title, v, ()=>store.update('items',i.id,{done:false})); }}),
     h('span',{class:'stamp '+(i.type||'other'),text:TYPE_LABEL[i.type]||'Other'}),
     h('div',{class:'body'},
       h('button',{class:'ttl',onclick:()=>openItemModal(i)}, i.title, c && c.example ? h('span',{class:'ex'},'example'):null),
