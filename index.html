@@ -532,8 +532,18 @@ const PRELOADED = {};
 
 // Talk to Firestore over its plain web address (no extra libraries, clear errors).
 class CloudError extends Error { constructor(kind, detail){ super(kind); this.kind = kind; this.detail = detail; } }
-const cloudUrl = key => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/(default)/documents/planners/${key}?key=${FIREBASE_CONFIG.apiKey}`;
+const DB_NAMES = ['default', '(default)'];   // Eva's Firestore database is named "default"
+let dbName = DB_NAMES[0];
+const cloudUrl = key => `https://firestore.googleapis.com/v1/projects/${FIREBASE_CONFIG.projectId}/databases/${encodeURIComponent(dbName)}/documents/planners/${key}?key=${FIREBASE_CONFIG.apiKey}`;
 async function cloudCall(key, opts={}){
+  try { return await cloudCallOnce(key, opts); }
+  catch(e){
+    if(e.kind!=='nodb') throw e;
+    for(const n of DB_NAMES){ if(n===dbName) continue; const prev=dbName; dbName=n; try { return await cloudCallOnce(key, opts); } catch(e2){ if(e2.kind!=='nodb') throw e2; dbName=prev; } }
+    throw e;
+  }
+}
+async function cloudCallOnce(key, opts={}){
   const ctl = new AbortController(), timer = setTimeout(()=>ctl.abort(), 12000);
   let res;
   try { res = await fetch(cloudUrl(key), {...opts, signal: ctl.signal}); }
