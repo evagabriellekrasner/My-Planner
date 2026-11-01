@@ -21,7 +21,7 @@
   --accent:#9a87b5; --accent-ink:#ffffff; --accent-soft:#eee8f3; --accent-2:#c98e9e;
   --late:#c26a68; --late-bg:#f7e6e4; --done:#b3abb6; --scrim:rgba(50,40,60,.35);
   --shadow:0 1px 0 rgba(80,60,90,.03), 0 6px 22px rgba(80,60,90,.06);
-  --imp:#f6edc4; --imp-edge:#e2cf86; --hl-1:#e9d896; --hl-2:#e4b0bc; --hl-3:#b2d1bb; --hl-4:#adc4dd; --hl-5:#e7bb99; --hl-6:#c4b6db; --on-hl:#3a3540;
+  --imp:#f6edc4; --imp-edge:#e2cf86; --test-bg:#f8e3e5; --test-edge:#cf8e98; --u-today:#e0a050; --u-tmw:#e6cc6a; --u-soon:#c9c2cf; --hl-1:#e9d896; --hl-2:#e4b0bc; --hl-3:#b2d1bb; --hl-4:#adc4dd; --hl-5:#e7bb99; --hl-6:#c4b6db; --on-hl:#3a3540;
   --f-display:"Fredoka", "Nunito", system-ui, sans-serif;
   --f-body:"Nunito", system-ui, -apple-system, "Segoe UI", sans-serif;
   --f-mono:"Nunito", system-ui, sans-serif;
@@ -34,13 +34,13 @@
   --paper:#1b191e; --sheet:#242127; --ink:#ebe6ee; --ink-2:#a59dab; --rule:#332f37;
   --accent:#b3a2cc; --accent-ink:#1f1b24; --accent-soft:#302b37; --accent-2:#d6a3b0;
   --late:#d9837f; --late-bg:#3a2627; --done:#6f6874; --scrim:rgba(0,0,0,.55); --shadow:0 6px 22px rgba(0,0,0,.3);
-  --imp:#45402a; --imp-edge:#b8a462; --hl-1:#bfae6d; --hl-2:#b88693; --hl-3:#86a890; --hl-4:#8399b3; --hl-5:#b88f70; --hl-6:#9a8db5; --on-hl:#1b191e;
+  --imp:#45402a; --imp-edge:#b8a462; --test-bg:#43262c; --test-edge:#c47f8a; --u-today:#d99a4c; --u-tmw:#cdb455; --u-soon:#6a6470; --hl-1:#bfae6d; --hl-2:#b88693; --hl-3:#86a890; --hl-4:#8399b3; --hl-5:#b88f70; --hl-6:#9a8db5; --on-hl:#1b191e;
   color-scheme:dark}}
 :root[data-theme="dark"]{
   --paper:#1b191e; --sheet:#242127; --ink:#ebe6ee; --ink-2:#a59dab; --rule:#332f37;
   --accent:#b3a2cc; --accent-ink:#1f1b24; --accent-soft:#302b37; --accent-2:#d6a3b0;
   --late:#d9837f; --late-bg:#3a2627; --done:#6f6874; --scrim:rgba(0,0,0,.55); --shadow:0 6px 22px rgba(0,0,0,.3);
-  --imp:#45402a; --imp-edge:#b8a462; --hl-1:#bfae6d; --hl-2:#b88693; --hl-3:#86a890; --hl-4:#8399b3; --hl-5:#b88f70; --hl-6:#9a8db5; --on-hl:#1b191e;
+  --imp:#45402a; --imp-edge:#b8a462; --test-bg:#43262c; --test-edge:#c47f8a; --u-today:#d99a4c; --u-tmw:#cdb455; --u-soon:#6a6470; --hl-1:#bfae6d; --hl-2:#b88693; --hl-3:#86a890; --hl-4:#8399b3; --hl-5:#b88f70; --hl-6:#9a8db5; --on-hl:#1b191e;
   color-scheme:dark}
 @media (prefers-color-scheme: dark){
   :root:not([data-theme="light"])[data-palette="ocean"]{ --accent:#9db6ca; --accent-soft:#29313a; --accent-2:#a9c2b3; --paper:#181b1e; --sheet:#20252a; --rule:#2f363d; --ink:#e6ecf0; --ink-2:#9aa6b0; }
@@ -308,6 +308,20 @@ button{cursor:pointer}
 .todo .acts button.on{color:var(--imp-edge)}
 .todo.done{opacity:.6}
 .todo.done .tt{text-decoration:line-through}
+.tgroup{margin-top:16px}
+.tgroup > h3{display:flex;align-items:center;gap:8px;font-family:var(--f-display);font-weight:600;font-size:18px;margin:0 0 8px}
+.tgroup > h3 .n{font-family:var(--f-body);font-size:13px;font-weight:800;color:var(--ink-2);background:var(--paper);border-radius:999px;padding:1px 8px}
+.todo.test{background:var(--test-bg);border:2px solid var(--test-edge)}
+.todo.test .why{color:var(--ink)}
+.todo.prep{border-left:5px solid var(--test-edge)}
+.todo.hw{border-left:6px solid var(--u-soon)}
+.todo.hw.u-late{border-left-color:var(--late)} .todo.hw.u-today{border-left-color:var(--u-today)} .todo.hw.u-tomorrow{border-left-color:var(--u-tmw)}
+.due{font-size:12px;font-weight:800;border-radius:999px;padding:1px 9px;white-space:nowrap;color:#2e2a33;background:var(--u-soon)}
+.due.u-late{background:var(--late);color:#fff} .due.u-today{background:var(--u-today)} .due.u-tomorrow{background:var(--u-tmw)}
+.due.u-test{background:var(--test-edge);color:#fff} .due.u-soon{background:transparent;border:1.5px solid var(--u-soon);color:var(--ink-2)} .due.u-prep{background:transparent;border:1.5px solid var(--test-edge);color:var(--ink)}
+.legend{display:flex;flex-wrap:wrap;gap:6px 12px;align-items:center;font-size:12px;color:var(--ink-2);margin:10px 0 0}
+.legend span{display:inline-flex;align-items:center;gap:5px}
+.legend i{width:12px;height:12px;border-radius:3px;display:inline-block}
 .todo-legend{display:flex;align-items:center;gap:8px;font-size:13px;color:var(--ink-2);margin:6px 0 0}
 .todo-legend i{width:14px;height:14px;border-radius:4px;background:var(--imp);border:1px solid var(--imp-edge)}
 .subh{font-family:var(--f-mono);font-size:11px;letter-spacing:.12em;text-transform:uppercase;color:var(--ink-2);margin:18px 0 0}
@@ -1453,16 +1467,24 @@ const between = (a,b) => Math.round((parse(b)-parse(a))/864e5);   // days from a
 const IMPORTANT = 60;
 function todosFor(ds){
   const t = todayIso(), out = [];
+  const dueTxt = d => d<0 ? 'Past due' : d===0 ? 'Due today' : d===1 ? 'Due tomorrow' : 'Due '+dayLabel(addDays(ds,d)).split(',')[0];
   for(const i of state.items){
     const c = classById(i.classId); if(!c) continue;
     const d = between(ds, i.due), tq = i.type==='test'||i.type==='quiz', T = TYPE_LABEL[i.type]||'Assignment';
-    let score=0, why='';
-    if(ds===t && i.due<t && !i.done){ score=100; why=`Past due · was due ${dayLabel(i.due)}`; }
-    else if(d===0){ score = tq?95:85; why = tq ? `${T} today${i.time?' at '+fmtTime(i.time):''}` : `Due today`; }
-    else if(d===1){ score = tq?75:65; why = tq ? `${T} tomorrow · study tonight` : `Due tomorrow · finish it today`; }
-    else if(d>=2 && d<=3 && (tq || i.type==='project')){ score=25; why=`${T} ${dayLabel(i.due)} · coming up`; }
-    else continue;
-    out.push({key:'i'+i.id+ds, kind:'item', ref:i, text:i.title, why, cls:c, score, done:!!i.done, type:i.type});
+    if(tq){
+      if(d<0 || d>3) continue;                       // tests: today through the next 3 days
+      const when = d===0 ? 'today' : d===1 ? 'tomorrow' : dayLabel(i.due).split(',')[0];
+      out.push({key:'i'+i.id+ds, kind:'item', group:'test', u:'test', ref:i, text:i.title, cls:c, done:!!i.done, type:i.type,
+        due:`${T} ${when}${i.time?' · '+fmtTime(i.time):''}`, why: d===1 ? 'Study tonight' : '',
+        sort: d*10000 + (i.time?toMinutes(i.time):0), imp: d<=1});
+      continue;
+    }
+    const late = ds===t && i.due<t && !i.done;
+    if(!late && (d<0 || d>3)) continue;              // homework: past due, today and the next 3 days
+    const u = late ? 'late' : d===0 ? 'today' : d===1 ? 'tomorrow' : 'soon';
+    out.push({key:'i'+i.id+ds, kind:'item', group:'hw', u, ref:i, text:i.title, cls:c, done:!!i.done, type:i.type,
+      due: late ? `Past due · ${dayLabel(i.due)}` : dueTxt(d), why: d===1 && !late ? 'Finish it today' : '',
+      sort: (late ? -1 : d)*10000 + between(i.due, ds), imp: late || d===0});
   }
   for(const plan of state.plans){
     const c = planClass(plan); if(!c) continue;
@@ -1473,18 +1495,19 @@ function todosFor(ds){
       for(const k of s.tasks){
         if(missed && k.done) continue;
         const dd = between(ds, test);
-        const score = missed ? 55 : dd<=2 ? 70 : 45;
-        const why = (missed ? `Missed study task from ${dayLabel(s.date)} · ` : 'Study · ') + `${title} ${dd===0?'today':dd===1?'tomorrow':'in '+dd+' days'}`;
-        out.push({key:'s'+plan.id+k.id, kind:'study', plan, date:s.date, ref:k, text:k.text, why, cls:c, score, done:!!k.done});
+        out.push({key:'s'+plan.id+k.id, kind:'study', group:'test', u:'prep', plan, date:s.date, ref:k, text:k.text, cls:c, done:!!k.done,
+          due: `Study for ${title} (${dd===0?'today':dd===1?'tomorrow':'in '+dd+' days'})`, why: missed ? `Missed on ${dayLabel(s.date)}` : '',
+          sort: dd*10000 + 5000, imp: dd<=1});
       }
     }
   }
   for(const x of state.todos.filter(x=>x.date===ds)){
-    out.push({key:'t'+x.id, kind:'todo', ref:x, text:x.text, why:'Your to-do', cls:null, score: x.star?90:50, done:!!x.done});
+    out.push({key:'t'+x.id, kind:'todo', group:'other', u:'', ref:x, text:x.text, cls:null, done:!!x.done, due:'', why:'',
+      sort: x.star ? 0 : 1, imp: !!x.star});
   }
-  out.forEach(x=>{ x.imp = x.score>=IMPORTANT; });
-  return out.sort((a,b)=> (a.done-b.done) || (b.score-a.score) || a.text.localeCompare(b.text));
+  return out.sort((a,b)=> (a.done-b.done) || (a.sort-b.sort) || a.text.localeCompare(b.text));
 }
+const toMinutes = t => { const [h,m] = t.split(':').map(Number); return h*60+m; };
 function setDone(x, done){
   if(x.kind==='item') return store.update('items', x.ref.id, {done});
   if(x.kind==='study') return toggleTask(x.plan.id, x.date, x.ref.id, done);
@@ -1500,10 +1523,10 @@ function renderToday(){
 
   const head = h('div',{class:'sheet-head'}, h('div',{style:'min-width:0'},
     h('h1',null, ds===t ? 'Today' : ds===addDays(t,1) ? 'Tomorrow' : longDay(ds)),
-    h('p',{class:'lead'},'Your to-do list, made from your homework, tests and study plans. Yellow ones matter most.'),
+    h('p',{class:'lead'},'Tests and quizzes first, then homework by when it’s due, then everything else.'),
     h('p',{class:'meta'}, ds===t||ds===addDays(t,1) ? longDay(ds)+' · ' : '',
       h('b',null,String(open.length)), ` thing${open.length===1?'':'s'} to do`,
-      imp ? [' · ', h('b',null,String(imp)), ' important'] : null)));
+      imp ? [' · ', h('b',null,String(imp)), ' urgent'] : null)));
 
   const chips = [];
   for(let n=0;n<7;n++){
@@ -1527,22 +1550,33 @@ function renderToday(){
       oninput:e=>{state.todoText=e.target.value;}, onkeydown:e=>{ if(e.key==='Enter'){ e.preventDefault(); addTodo(); } }}),
     h('button',{class:'btn primary',onclick:addTodo},'Add'));
 
-  const row = x => h('li',{class:'todo'+(x.imp&&!x.done?' imp':'')+(x.done?' done':'')},
+  const row = x => h('li',{class:'todo'+(x.group==='test' ? (x.kind==='study' ? ' prep' : ' test') : x.group==='hw' ? ' hw u-'+x.u : '')+(x.done?' done':'')},
     h('input',{type:'checkbox',id:'td-'+x.key,checked:x.done||null,'aria-label':`Mark ${x.text} done`,onchange:async e=>{ const v=e.target.checked; await setDone(x,v); checked(x.text, v, ()=>setDone(x,false)); }}),
     h('div',{style:'min-width:0'},
       x.kind==='item' ? h('button',{class:'tt',onclick:()=>openItemModal(x.ref)}, x.text) : h('label',{class:'tt',for:'td-'+x.key,text:x.text}),
       h('div',{class:'why'},
-        x.imp && !x.done ? h('span',{class:'flag'},'Important') : null,
-        x.kind==='item' ? h('span',{class:'flag'},TYPE_LABEL[x.type]) : null,
-        h('span',null,x.why),
+        x.due ? (x.done ? h('span',null,x.due) : h('span',{class:'due u-'+x.u}, x.due)) : null,
+        x.kind==='item' && x.group==='hw' ? h('span',{class:'flag'},TYPE_LABEL[x.type]) : null,
+        x.why && !x.done ? h('span',null,x.why) : null,
         x.cls ? h('span',{class:'tag'},h('i',{class:`sw-${x.cls.color}`}),x.cls.name) : null)),
     x.kind==='todo' ? h('div',{class:'acts'},
-      h('button',{class:x.ref.star?'on':'',title:x.ref.star?'Unmark important':'Mark important','aria-label':'Toggle important',onclick:()=>store.update('todos',x.ref.id,{star:!x.ref.star})},x.ref.star?'★':'☆'),
+      h('button',{class:x.ref.star?'on':'',title:x.ref.star?'Unpin from the top':'Pin to the top','aria-label':'Pin to the top',onclick:()=>store.update('todos',x.ref.id,{star:!x.ref.star})},x.ref.star?'★':'☆'),
       h('button',{title:'Delete','aria-label':`Delete ${x.text}`,onclick:()=>store.remove('todos',x.ref.id)},'×')) : h('span'));
 
+  const group = (title, items) => items.length ? h('section',{class:'tgroup'}, h('h3',null,title, h('span',{class:'n'},String(items.length))), h('ul',{class:'todos',style:'margin:0'}, ...items.map(row))) : null;
+  const tests = open.filter(x=>x.group==='test'), hw = open.filter(x=>x.group==='hw'), other = open.filter(x=>x.group==='other');
+  const legend = h('div',{class:'legend'},
+    h('span',null,h('i',{style:'background:var(--test-edge)'}),'Test or quiz'),
+    h('span',null,h('i',{style:'background:var(--late)'}),'Past due'),
+    h('span',null,h('i',{style:'background:var(--u-today)'}),'Due today'),
+    h('span',null,h('i',{style:'background:var(--u-tmw)'}),'Due tomorrow'),
+    h('span',null,h('i',{style:'background:var(--u-soon)'}),'Later'));
   const body = list.length ? [
-      imp ? h('p',{class:'todo-legend'}, h('i'), 'Yellow = do these first.') : null,
-      open.length ? h('ul',{class:'todos'}, ...open.map(row)) : h('div',{class:'empty sm'}, h('p',null,'Everything for this day is done.')),
+      open.length ? legend : null,
+      group('Tests & quizzes', tests),
+      group('Homework', hw),
+      group('Other to-dos', other),
+      !open.length ? h('div',{class:'empty sm'}, h('p',null,'Everything for this day is done.')) : null,
       done.length ? [h('p',{class:'subh'},`Done (${done.length})`), h('ul',{class:'todos'}, ...done.map(row))] : null
     ] : h('div',{class:'empty'},
       h('h3',null,'Nothing on your list'),
