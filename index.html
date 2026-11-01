@@ -306,7 +306,7 @@ button{cursor:pointer}
 
 .chip.sw-7,.chip.sw-8,.chip.sw-9,.chip.sw-10,.hl.sw-8,.hl.sw-9,.hl.sw-10{color:#fff!important}
 .toast-act{border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;font-weight:800;margin-left:12px;cursor:pointer}
-.toast{display:flex;align-items:center;gap:4px;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.toast{display:flex;width:max-content;align-items:center;gap:4px;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
 
 @media (max-width:760px){
   .layout{grid-template-columns:minmax(0,1fr);gap:14px}
@@ -1496,11 +1496,22 @@ async function pdfPages(file, onPage){
       if(!it.str || !it.str.trim()) continue;
       const y = Math.round((it.transform?it.transform[5]:0)/3)*3, x = it.transform?it.transform[4]:0;
       if(!rows.has(y)) rows.set(y, []);
-      rows.get(y).push({x, s:it.str});
+      rows.get(y).push({x, w: it.width||0, s:it.str});
     }
-    const lines = [...rows.entries()].sort((a,b)=>b[0]-a[0])
-      .map(([,cells])=>cells.sort((a,b)=>a.x-b.x).map(c=>c.s.trim()).join(' | ').replace(/\s+/g,' ').trim()).filter(Boolean);
-    pages.push(lines.join('\n'));
+    const lines = [];
+    for(const [,items] of [...rows.entries()].sort((a,b)=>b[0]-a[0])){
+      items.sort((a,b)=>a.x-b.x);
+      const cells = [];
+      for(const it of items){
+        const last = cells[cells.length-1];
+        if(last && it.x - last.end < 14){ last.s += (/\s$/.test(last.s)||/^\s/.test(it.s) ? '' : ' ') + it.s; last.end = it.x + it.w; }
+        else cells.push({x: Math.round(it.x), s: it.s, end: it.x + it.w});
+      }
+      const cs = cells.map(c=>({x:c.x, s:c.s.replace(/\s+/g,' ').trim()})).filter(c=>c.s);
+      if(cs.length) lines.push(cs);
+    }
+    pages.push(lines.map(cs=>cs.map(c=>c.s).join(' | ')).join('\n'));
+    (pages.cells = pages.cells || []).push(...lines, null);   // null marks a page break
   }
   return pages;
 }
@@ -1533,6 +1544,113 @@ function localParse(text){   // backup when Claude can't be asked: lines that co
   }
   return out;
 }
+/* ---- smarter reading of school schedules: tells homework apart from class work ---- */
+const COLS = [
+  ['date', /^(date|day|dates|days|week|due date|when)$/i],
+  ['hw',   /(home\s*work|^hw\b|\bhw$|assignments?\s*due|^due$|^assignment|at[- ]home|tonight|to do at home|practice)/i],
+  ['test', /^(assessments?|tests?|quizzes|quiz|tests?\s*\/\s*quizzes)$/i],
+  ['class',/(class\s*work|in[- ]class|^class$|agenda|activit|lesson|topic|objective|learning target|notes|warm[- ]?up|bell ?ringer|today|^do now)/i],
+];
+const NOTHING = /^(none|no hw|no homework|n\/a|na|-+|—|–|tbd|tba|x|no school|holiday|break)\.?$/i;
+function findDate(str){
+  let m;
+  if((m = str.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i))){
+    const mo = MONTHS.indexOf(m[1].slice(0,3).toLowerCase()), d = +m[2];
+    if(mo>=0 && d>=1 && d<=31) return {iso:`${m[3]?+m[3]:yearFor(mo)}-${pad(mo+1)}-${pad(d)}`, hit:m[0]};
+  }
+  if((m = str.match(/\b(\d{1,2})[\/\-.](\d{1,2})(?:[\/\-.](\d{2,4}))?\b/))){
+    const mo = +m[1]-1, d = +m[2];
+    if(mo>=0 && mo<=11 && d>=1 && d<=31){ const y = m[3] ? (+m[3]<100 ? 2000+ +m[3] : +m[3]) : yearFor(mo); return {iso:`${y}-${pad(mo+1)}-${pad(d)}`, hit:m[0]}; }
+  }
+  return null;
+}
+const cleanTitle = t => t.replace(/\b(mon|tues?|wed|thur?s?|fri|sat|sun)[a-z]*\.?,?(?=\s|$)/ig,'').replace(/^(due|hw|homework|class\s*work|in[- ]class)\s*[:\-–]\s*/i,'').replace(/\bdue\b:?/ig,'').replace(/^[\s\-–:,.•·*]+|[\s\-–:,.•·*]+$/g,'').replace(/\s{2,}/g,' ').trim();
+function kindOf(text, col){
+  const t = text.toLowerCase();
+  if(/\b(test|exam|midterm|final|quiz|assessment)\b/.test(t) && !/\b(review|study guide|practice test|correction)/.test(t)) return 'test';
+  if(/\b(project|essay|paper|presentation|lab report)\b/.test(t)) return 'test';
+  if(col==='hw' || /^(hw|homework)\b|\bdue\b/i.test(text)) return 'hw';
+  if(col==='class') return 'class';
+  return 'unknown';
+}
+// split one cell like "Classwork: notes 2.3  Homework: p.45 #1-9" into labelled parts
+function labelledParts(text){
+  const re = /(class\s*work|in[- ]class|home\s*work|hw|assessment|quiz|test)\s*:\s*/ig;
+  const marks = [...text.matchAll(re)];
+  if(marks.length < 1) return null;
+  const parts = [];
+  marks.forEach((m,i)=>{
+    const end = i+1<marks.length ? marks[i+1].index : text.length;
+    const body = text.slice(m.index + m[0].length, end).trim();
+    const lab = m[1].toLowerCase();
+    parts.push({col: /home|hw/.test(lab) ? 'hw' : /class/.test(lab) ? 'class' : 'test', text: body});
+  });
+  const before = text.slice(0, marks[0].index).trim();
+  if(before) parts.unshift({col:null, text: before});
+  return parts;
+}
+function smartParse(rawText, cellRows){
+  // rows: arrays of {x, s}. From a PDF we have positions; pasted text uses tabs or " | " and cell order.
+  const rows = cellRows && cellRows.length ? cellRows
+    : rawText.split('\n').map(l => (l.includes('\t') ? l.split('\t') : l.split(' | ')).map((s,i)=>({x:i, s:s.trim(), idx:true})));
+  const out = [];
+  let header = null, last = null;
+  for(const row of rows){
+    if(!row){ last = null; continue; }
+    const cells = row.filter(c=>c.s);
+    if(!cells.length) continue;
+    // header row?
+    const labels = cells.map(c=>{ const hit = COLS.find(([,re])=>re.test(c.s.replace(/[:*]/g,'').trim())); return hit ? hit[0] : null; });
+    if(labels.filter(Boolean).length >= 2 && labels.some(l=>l==='hw'||l==='class') && !findDate(cells.map(c=>c.s).join(' '))){
+      header = cells.map((c,i)=>({x:c.x, kind:labels[i]})).filter(h=>h.kind);
+      last = null; continue;
+    }
+    const colFor = c => {
+      if(!header) return null;
+      if(c.idx){ const hh = header.find(h=>h.x===c.x); return hh ? hh.kind : null; }
+      let best = null, bd = Infinity;
+      for(const h of header){ const d = Math.abs(h.x - c.x); if(d < bd){ bd = d; best = h; } }
+      return best && bd < 160 ? best.kind : null;
+    };
+    const whole = cells.map(c=>c.s).join(' ');
+    const date = findDate(whole);
+    if(!date){
+      // a line without a date continues the cells of the row above (wrapped table text)
+      if(last && header){ for(const c of cells){ const k = colFor(c); if(k && k!=='date' && last.parts[k]!==undefined) last.parts[k] += ' ' + c.s; else if(k && k!=='date') last.parts[k] = c.s; } }
+      continue;
+    }
+    const parts = {};
+    for(const c of cells){
+      let s = c.s; if(s.includes(date.hit)) s = s.replace(date.hit,'');
+      let k = colFor(c) || null;
+      if(k==='date') { if(cleanTitle(s).length < 3) continue; k = null; }
+      const lp = labelledParts(s);
+      if(lp){ for(const p of lp){ const kk = p.col || k || 'unknown'; parts[kk] = ((parts[kk]||'') + ' ' + p.text).trim(); } continue; }
+      const kk = k || 'unknown';
+      parts[kk] = ((parts[kk]||'') + ' ' + s).trim();
+    }
+    last = {date: date.iso, parts};
+    out.push(last);
+  }
+  // turn rows into items
+  const items = [];
+  for(const r of out){
+    for(const [col, raw] of Object.entries(r.parts)){
+      const pieces = col!=='hw' ? [raw] : raw.split(/\s*[;•]\s*|\s{2,}(?=\d+\.|[A-Z])/).filter(Boolean);
+      for(const piece of pieces){
+        const title = cleanTitle(piece);
+        if(title.length < 3 || NOTHING.test(title)) continue;
+        const kind = kindOf(piece, col);
+        items.push({title: title.slice(0,80), kind, col, type: kind==='class' ? 'other' : kind==='hw' ? (guessType(title)==='reading'?'reading':'homework') : guessType(title), due: r.date, class:null,
+          notes: kind==='class' ? 'In-class work' : ''});
+      }
+    }
+  }
+  items.hasHeader = !!header;
+  items.dates = [...new Set(out.map(r=>r.date))].sort();
+  return items;
+}
+
 function parseItems(text){
   const t = String(text||'');
   const a = t.indexOf('['), b = t.lastIndexOf(']');
@@ -1607,16 +1725,32 @@ function openPdfModal(presetCls){
     catch { res = null; }
     let found;
     if(res){ found = res.items; view.source='claude'; view.failed = res.failed; }
-    else { found = localParse(text); view.source='local'; }
+    else {
+      found = smartParse(text, pages.cells);
+      if(found.length < 2){ const simple = localParse(text); if(simple.length > found.length) found = simple; }
+      view.source='local'; view.dates = found.dates || [];
+    }
     const byName = new Map(state.classes.map(c=>[c.name.toLowerCase(), c.id]));
     const seen = new Set(), t = todayIso();
     view.rows = found.filter(x=>x && x.title && /^\d{4}-\d{2}-\d{2}$/.test(x.due||'')).map(x=>({
       title:String(x.title).slice(0,140), type: TYPE_LABEL[x.type] ? x.type : guessType(String(x.title)), due:x.due,
-      classId:(x.class && byName.get(String(x.class).toLowerCase())) || view.defaultClass, notes: x.notes ? String(x.notes).slice(0,300) : ''
+      classId:(x.class && byName.get(String(x.class).toLowerCase())) || view.defaultClass, notes: x.notes ? String(x.notes).slice(0,300) : '',
+      kind: x.kind || (x.type==='test'||x.type==='quiz'||x.type==='project' ? 'test' : 'hw'), due0: x.due
     })).filter(r=>{ const k=r.title.toLowerCase()+'|'+r.due; if(seen.has(k)) return false; seen.add(k); return true; })
       .sort((a,b)=>a.due.localeCompare(b.due))
-      .map((r,i)=>({...r, key:'r'+i, on: r.due>=t}));
+      .map((r,i)=>({...r, key:'r'+i}));
+    view.show = 'hw'; applyPick();
     view.stage='review'; view.msg=''; draw();
+  }
+  function nextClassDay(d){
+    const later = (view.dates||[]).find(x=>x>d);
+    if(later && between(d, later) <= 7) return later;
+    let n = addDays(d,1); while([0,6].includes(parse(n).getDay())) n = addDays(n,1); return n;
+  }
+  function applyShift(){ view.rows.forEach(r=>{ r.due = (view.hwNext && r.kind==='hw') ? nextClassDay(r.due0) : r.due0; }); view.rows.sort((a,b)=>a.due.localeCompare(b.due)); }
+  function applyPick(){
+    const t = todayIso();
+    view.rows.forEach(r=>{ r.on = r.due >= t && (view.show==='all' || r.kind!=='class'); });
   }
   async function handleFile(file){
     if(!file) return;
@@ -1673,7 +1807,17 @@ function openPdfModal(presetCls){
         kids.push(h('p',{class:'lead',style:'margin:0'},`Found ${view.rows.length} assignments. Untick anything you don’t want and fix anything that looks off.`));
         if(past) kids.push(h('p',{class:'hint'},`${past} of them are already past, so they start unticked.`));
         if(view.failed) kids.push(h('p',{class:'hint'},`${view.failed} part${view.failed===1?'':'s'} of the document couldn’t be read, so a few items may be missing.`));
-        if(view.source==='local') kids.push(h('p',{class:'hint'},'These were picked out by finding dates, so double-check the names and types.'));
+        const nClass = view.rows.filter(r=>r.kind==='class').length;
+        if(nClass) kids.push(h('div',{class:'qrow',style:'margin-top:10px;gap:8px'},
+          h('span',{style:'font-size:14px;font-weight:700'},'Add:'),
+          h('div',{class:'qshort'},
+            h('button',{type:'button','aria-pressed':String(view.show==='hw'),onclick:()=>{view.show='hw';applyPick();draw();}},'Homework & tests only'),
+            h('button',{type:'button','aria-pressed':String(view.show==='all'),onclick:()=>{view.show='all';applyPick();draw();}},'Also class work')),
+          h('span',{class:'hint',style:'margin:0'},`${nClass} in-class item${nClass===1?'':'s'} found`)));
+        if(view.source==='local' && view.rows.some(r=>r.kind==='hw')) kids.push(h('label',{class:'chk',style:'margin-top:8px'},
+          h('input',{type:'checkbox',id:'hwNext',checked:view.hwNext||null,onchange:e=>{view.hwNext=e.target.checked; applyShift(); applyPick(); draw();}}),
+          'Homework is listed on the day it’s given, so it’s due the next class'));
+        if(view.source==='local') kids.push(h('p',{class:'hint'},'Double-check names, types and dates before adding.'));
         kids.push(h('div',{class:'qrow',style:'margin-top:10px;gap:8px'},
           h('span',{style:'font-size:14px;font-weight:700'},'Put all in:'),
           h('select',{id:'pdfAll',class:'qdate',onchange:e=>{ if(e.target.value){ view.rows.forEach(r=>r.classId=e.target.value); draw(); } }}, h('option',{value:'',selected:true},'Choose a class…'), ...classOpts(null)),
@@ -1686,7 +1830,7 @@ function openPdfModal(presetCls){
           h('select',{id:'py-'+r.key,'aria-label':'Type',onchange:e=>{r.type=e.target.value;}}, ...TYPES.map(([k,l])=>h('option',{value:k,selected:r.type===k||null},l))),
           h('input',{type:'date',id:'pd-'+r.key,value:r.due,'aria-label':'Due date',onchange:e=>{ if(e.target.value) r.due=e.target.value; }}),
           h('select',{id:'pk-'+r.key,'aria-label':'Class',onchange:e=>{r.classId=e.target.value;}}, ...classOpts(r.classId)),
-          r.notes ? h('div',{class:'nt',text:r.notes}) : null))));
+          (r.notes || r.kind==='class') ? h('div',{class:'nt',text: r.kind==='class' ? 'In-class work (not homework)' : r.notes}) : null))));
         if(view.msg) kids.push(h('p',{class:'err',style:'margin:10px 0 0'},view.msg));
         const addBtn = h('button',{type:'button',class:'btn primary',id:'pdfAdd',onclick:addAll,disabled:!on||null},`Add ${on} to my planner`);
         var updateCount = () => { const n=view.rows.filter(r=>r.on).length; addBtn.textContent=`Add ${n} to my planner`; addBtn.disabled = !n; };
