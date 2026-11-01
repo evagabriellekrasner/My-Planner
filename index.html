@@ -306,7 +306,7 @@ button{cursor:pointer}
 
 .chip.sw-7,.chip.sw-8,.chip.sw-9,.chip.sw-10,.hl.sw-8,.hl.sw-9,.hl.sw-10{color:#fff!important}
 .toast-act{border:0;background:var(--accent);color:var(--accent-ink);border-radius:8px;padding:5px 12px;font-weight:800;margin-left:12px;cursor:pointer}
-.toast{display:flex;width:max-content;align-items:center;gap:4px;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
+.toast{position:fixed;display:flex;width:max-content;z-index:80!important;align-items:center;gap:4px;left:50%;transform:translateX(-50%);bottom:calc(20px + env(safe-area-inset-bottom,0px));background:var(--ink);color:var(--sheet);padding:10px 16px;border-radius:10px;font-size:14px;z-index:60;max-width:calc(100% - 32px)}
 
 @media (max-width:760px){
   .layout{grid-template-columns:minmax(0,1fr);gap:14px}
@@ -1820,10 +1820,11 @@ function openPdfModal(presetCls){
         if(view.source==='local') kids.push(h('p',{class:'hint'},'Double-check names, types and dates before adding.'));
         kids.push(h('div',{class:'qrow',style:'margin-top:10px;gap:8px'},
           h('span',{style:'font-size:14px;font-weight:700'},'Put all in:'),
-          h('select',{id:'pdfAll',class:'qdate',onchange:e=>{ if(e.target.value){ view.rows.forEach(r=>r.classId=e.target.value); draw(); } }}, h('option',{value:'',selected:true},'Choose a class…'), ...classOpts(null)),
-          h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=true);draw();}},'Tick all'),
-          h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=r.due>=todayIso());draw();}},'Only upcoming'),
-          h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=false);draw();}},'Untick all')));
+          h('select',{id:'pdfAll',class:'qdate',onchange:e=>{ if(e.target.value){ view.allClass=e.target.value; view.rows.forEach(r=>r.classId=e.target.value); draw(); toast(`All set to ${classById(e.target.value)?.name||'that class'}`); } }},
+            h('option',{value:'',selected:!view.allClass||null},'Choose a class…'), ...classOpts(view.allClass||null)),
+          h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=true);draw();toast(`Ticked all ${view.rows.length}`);}},'Tick all'),
+          h('button',{type:'button',class:'btn sm',onclick:()=>{applyPick();draw();toast(`Ticked ${view.rows.filter(r=>r.on).length} upcoming`);}},'Only upcoming'),
+          h('button',{type:'button',class:'btn sm',onclick:()=>{view.rows.forEach(r=>r.on=false);draw();toast('Unticked all');}},'Untick all')));
         kids.push(h('ul',{class:'found'}, ...view.rows.map(r=>h('li',{class:r.on?'':'off'},
           h('input',{type:'checkbox',id:'pc-'+r.key,checked:r.on||null,'aria-label':'Include '+r.title,onchange:e=>{r.on=e.target.checked; e.target.closest('li').classList.toggle('off',!r.on); updateCount();}}),
           h('input',{class:'ti',id:'pt-'+r.key,value:r.title,'aria-label':'Title',oninput:e=>{r.title=e.target.value;}}),
@@ -1839,7 +1840,11 @@ function openPdfModal(presetCls){
           h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), addBtn)));
       }
     }
+    const list = box.querySelector('.found'), keep = list ? list.scrollTop : 0;
+    const scrim = box.parentElement, keep2 = scrim ? scrim.scrollTop : 0;
     box.replaceChildren(...kids);
+    const list2 = box.querySelector('.found'); if(list2) list2.scrollTop = keep;
+    if(scrim) scrim.scrollTop = keep2;
   }
   draw();
   showModal(box);
