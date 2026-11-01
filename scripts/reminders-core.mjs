@@ -24,7 +24,10 @@ export function eventsOn(events, ds) {
       else if (ev.repeat === 'daily') hit = true;
       else if (ev.repeat === 'weekdays') hit = dow !== 0 && dow !== 6;
       else if (ev.repeat === 'yearly') hit = ev.date.slice(5) === ds.slice(5);
+      else if (ev.repeat === 'days') hit = (ev.days || []).includes(dow);
     }
+    if (hit && ev.repeat === 'days' && ds === ev.date && !(ev.days || []).includes(parse(ds).getUTCDay())) hit = false;
+    if (hit && (ev.skipOn || []).includes(ds)) hit = false;
     if (hit && !(ev.doneOn || []).includes(ds)) out.push(ev);
   }
   return out.sort((a, b) => (a.time || '00:00').localeCompare(b.time || '00:00'));

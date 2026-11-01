@@ -1016,8 +1016,9 @@ function renderCalendar(all, cls, withEvents){
 }
 
 /* ---------- events: appointments, concerts, practices, reminders… ---------- */
-const EV_KINDS = [['appointment','Appointment','APPT'],['concert','Concert / performance','SHOW'],['practice','Practice / rehearsal','PRAC'],
-  ['game','Game / meet','GAME'],['meeting','Club / meeting','MTG'],['work','Work shift','WORK'],['birthday','Birthday','BDAY'],
+const EV_KINDS = [['sport','Sport','SPRT'],['practice','Practice / rehearsal','PRAC'],['game','Game / meet','GAME'],['lesson','Lesson','LSN'],
+  ['appointment','Appointment','APPT'],['concert','Concert / performance','SHOW'],
+  ['meeting','Club / meeting','MTG'],['work','Work shift','WORK'],['birthday','Birthday','BDAY'],
   ['reminder','Reminder','REM'],['other','Other','EVT']];
 const EV_LABEL = Object.fromEntries(EV_KINDS.map(([k,l])=>[k,l]));
 const EV_SHORT = Object.fromEntries(EV_KINDS.map(([k,,s])=>[k,s]));
@@ -1032,11 +1033,24 @@ function eventsOn(ds){
       if(ev.repeat==='weekly') hit = gap % 7 === 0;
       else if(ev.repeat==='daily') hit = true;
       else if(ev.repeat==='weekdays') hit = ![0,6].includes(parse(ds).getDay());
+      else if(ev.repeat==='days') hit = (ev.days||[]).includes(parse(ds).getDay());
       else if(ev.repeat==='yearly') hit = ev.date.slice(5)===ds.slice(5);
     }
+    if(hit && ev.repeat==='days' && ds===ev.date && !(ev.days||[]).includes(parse(ds).getDay())) hit = false;
+    if(hit && (ev.skipOn||[]).includes(ds)) hit = false;
     if(hit) out.push({...ev, src:ev, on:ds, doneToday:(ev.doneOn||[]).includes(ds)});
   }
   return out.sort((a,b)=>(a.time||'00:00').localeCompare(b.time||'00:00'));
+}
+const DAY_CODES = ['SU','MO','TU','WE','TH','FR','SA'], DAY_SHORT = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
+const ruleFor = ev => ev.repeat==='weekdays' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR'
+  : ev.repeat==='days' ? 'FREQ=WEEKLY;BYDAY=' + [...(ev.days||[])].sort().map(i=>DAY_CODES[i]).join(',')
+  : 'FREQ='+ev.repeat.toUpperCase();
+function repeatText(ev){
+  if(!ev.repeat || ev.repeat==='none') return '';
+  const m = {weekly:`every ${parse(ev.date).toLocaleDateString(undefined,{weekday:'long'})}`, weekdays:'every weekday', daily:'every day', yearly:'every year',
+    days: (ev.days||[]).length ? [...ev.days].sort().map(i=>DAY_SHORT[i]).join(', ') : 'no days picked'}[ev.repeat] || '';
+  return m + (ev.until ? ` until ${dayLabel(ev.until)}` : '');
 }
 function gcalLink(ev, ds){
   const day = (ds||ev.date).replace(/-/g,'');
@@ -1048,10 +1062,7 @@ function gcalLink(ev, ds){
   } else { const next = addDays(ds||ev.date,1).replace(/-/g,''); dates = day+'/'+next; }
   const q = new URLSearchParams({action:'TEMPLATE', text:ev.title, dates, details: [ev.notes||'', 'From My Planner'].filter(Boolean).join('\n'), location: ev.place||''});
   try { q.set('ctz', Intl.DateTimeFormat().resolvedOptions().timeZone); } catch {}
-  if(ev.repeat==='weekly' || ev.repeat==='daily' || ev.repeat==='yearly' || ev.repeat==='weekdays'){
-    const rule = ev.repeat==='weekdays' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' : 'FREQ='+ev.repeat.toUpperCase();
-    q.set('recur','RRULE:'+rule+(ev.until?';UNTIL='+ev.until.replace(/-/g,''):''));
-  }
+  if(ev.repeat && ev.repeat!=='none') q.set('recur','RRULE:'+ruleFor(ev)+(ev.until?';UNTIL='+ev.until.replace(/-/g,''):''));
   return 'https://calendar.google.com/calendar/render?'+q.toString();
 }
 function scheduleBlock(ds, onToday){
@@ -1068,16 +1079,22 @@ function scheduleBlock(ds, onToday){
     h('span',{class:'kd'}, EV_LABEL[ev.kind]||'Event'),
     h('div',{style:'min-width:0'},
       h('button',{class:'tt',onclick:()=>openEventModal(ev.src)}, ev.title),
-      h('div',{class:'sub'}, [ev.kind==='reminder' && ev.time ? fmtTime(ev.time) : '', ev.end ? 'until '+fmtTime(ev.end) : '', ev.place||'', ev.repeat && ev.repeat!=='none' ? 'repeats '+ev.repeat : ''].filter(Boolean).join(' · '))),
+      h('div',{class:'sub'}, [ev.kind==='reminder' && ev.time ? fmtTime(ev.time) : '', ev.end ? 'until '+fmtTime(ev.end) : '', ev.place||'', repeatText(ev)].filter(Boolean).join(' · ')),
+      ev.repeat && ev.repeat!=='none' ? h('button',{class:'sadd',style:'padding:2px 0 0;font-size:12px',onclick:async()=>{
+        const src = ev.src, list = [...new Set([...(src.skipOn||[]), ds])];
+        await store.update('events', src.id, {skipOn:list});
+        toast(`Skipped ${ev.title} on ${dayLabel(ds)}`, {label:'Undo', run: async()=>{ await store.update('events', src.id, {skipOn:(src.skipOn||[]).filter(x=>x!==ds)}); }});
+      }}, 'Skip this day (canceled)') : null),
     h('a',{class:'gcal',href:gcalLink(ev, ds),target:'_blank',rel:'noopener',title:'Add to Google Calendar to get phone notifications'},'+ Google Cal')));
   return h('section',null,
     h('div',{class:'sched-h'}, h('h2',null, onToday ? 'Schedule' : 'Events'),
       h('button',{class:'btn sm',onclick:()=>openEventModal(null, ds)},'+ Add event')),
     rows.length ? h('ul',{class:'evlist'}, ...rows) : h('p',{class:'hint',style:'margin:6px 0 0'},'No appointments or events. Add practices, concerts, appointments or reminders here.'));
 }
-function openEventModal(ev, presetDate){
+function openEventModal(ev, presetDate, preset){
   const isNew = !ev;
-  const d = ev ? {...ev} : {title:'', kind:'appointment', date: presetDate || todayIso(), time:'', end:'', place:'', notes:'', remind: String(state.prefs.before ?? 30), repeat:'none', until:''};
+  const d = ev ? {...ev} : {title:'', kind:'appointment', date: presetDate || todayIso(), time:'', end:'', place:'', notes:'', remind: String(state.prefs.before ?? 30), repeat:'none', until:'', ...(preset||{})};
+  let days = new Set(d.days && d.days.length ? d.days : [parse(d.date).getDay()]);
   const f = (label, ctl, full) => h('div',{class:'field', style: full ? 'grid-column:1/-1' : null}, h('label',{for:ctl.id},label), ctl);
   const title = h('input',{id:'evTitle',maxlength:'100',placeholder:'e.g. Dentist, Choir concert, Soccer practice',value:d.title});
   const kind = h('select',{id:'evKind'}, ...EV_KINDS.map(([k,l])=>h('option',{value:k,selected:d.kind===k||null},l)));
@@ -1086,10 +1103,15 @@ function openEventModal(ev, presetDate){
   const end = h('input',{id:'evEnd',type:'time',value:d.end||''});
   const place = h('input',{id:'evPlace',maxlength:'100',placeholder:'Optional',value:d.place||''});
   const remind = h('select',{id:'evRemind'}, ...REMIND_OPTS.map(([v,l])=>h('option',{value:v,selected:String(d.remind??'')===v||null},l)));
-  const repeat = h('select',{id:'evRepeat',onchange:()=>{ untilWrap.hidden = repeat.value==='none'; }},
-    ...[['none','Doesn’t repeat'],['weekly','Every week'],['weekdays','Every weekday'],['daily','Every day'],['yearly','Every year']].map(([v,l])=>h('option',{value:v,selected:(d.repeat||'none')===v||null},l)));
+  const repeat = h('select',{id:'evRepeat',onchange:()=>{ untilWrap.hidden = repeat.value==='none'; daysWrap.hidden = repeat.value!=='days'; }},
+    ...[['none','Doesn’t repeat'],['days','Certain days of the week'],['weekly','Every week'],['weekdays','Every weekday'],['daily','Every day'],['yearly','Every year']].map(([v,l])=>h('option',{value:v,selected:(d.repeat||'none')===v||null},l)));
+  const dayBtns = h('div',{class:'qshort'});
+  const drawDays = () => dayBtns.replaceChildren(...[1,2,3,4,5,6,0].map(i=>h('button',{type:'button','aria-pressed':String(days.has(i)),style:'min-width:46px',
+    onclick:()=>{ days.has(i) ? days.delete(i) : days.add(i); drawDays(); }}, DAY_SHORT[i])));
+  drawDays();
+  const daysWrap = h('div',{class:'field',style:'grid-column:1/-1'}, h('span',{class:'lbl'},'Which days?'), dayBtns); daysWrap.hidden = (d.repeat||'none')!=='days';
   const until = h('input',{id:'evUntil',type:'date',value:d.until||''});
-  const untilWrap = f('Repeat until (optional)', until); untilWrap.hidden = (d.repeat||'none')==='none';
+  const untilWrap = f('Until (end of season, optional)', until); untilWrap.hidden = (d.repeat||'none')==='none';
   const notes = h('textarea',{id:'evNotes',maxlength:'500',placeholder:'Optional'}); notes.value = d.notes||'';
   const err = h('p',{class:'err',hidden:true});
   let armed = false;
@@ -1103,17 +1125,34 @@ function openEventModal(ev, presetDate){
     if(!t){ err.hidden=false; err.textContent='Give it a name.'; return; }
     if(!date.value){ err.hidden=false; err.textContent='Pick a date.'; return; }
     const data = {title:t, kind:kind.value, date:date.value, time:time.value||'', end:end.value||'', place:place.value.trim(), notes:notes.value.trim(),
-      remind: remind.value, repeat: repeat.value, until: repeat.value==='none' ? '' : (until.value||'')};
+      remind: remind.value, repeat: repeat.value, until: repeat.value==='none' ? '' : (until.value||''), days: repeat.value==='days' ? [...days].sort() : []};
+    if(repeat.value==='days' && !days.size){ err.hidden=false; err.textContent='Pick at least one day.'; return; }
     if(isNew) await store.add('events', {...data, doneOn:[], created:Date.now()}); else await store.update('events', ev.id, data);
     closeModal(); toast(isNew ? `Added ${t}` : 'Saved');
   }},
-    h('h2',null, isNew ? 'Add an event' : 'Edit event'),
-    h('div',{class:'row2'}, f('What is it?', title, true), f('Type', kind), f('Date', date), f('Starts (optional)', time), f('Ends (optional)', end),
-      f('Where', place), f('Reminder', remind), f('Repeats', repeat), untilWrap, f('Notes', notes, true)),
+    h('h2',null, isNew ? (preset && preset.repeat==='days' ? 'Add a sport or activity' : 'Add an event') : 'Edit event'),
+    h('div',{class:'row2'}, f('What is it?', title, true), f('Type', kind), f(d.repeat && d.repeat!=='none' ? 'Starts on' : 'Date', date), f('Starts (optional)', time), f('Ends (optional)', end),
+      f('Where', place), f('Reminder', remind), f('Repeats', repeat), untilWrap, daysWrap, f('Notes', notes, true)),
     err,
-    h('p',{class:'hint',style:'margin:0 0 8px'},'Reminders pop up while My Planner is open (turn them on in Settings). For phone alerts, use “+ Google Cal” on the event.'),
+    h('p',{class:'hint',style:'margin:0 0 8px'},'You’ll get this reminder on every device where notifications are turned on (Settings → Reminders).'),
     h('div',{class:'modal-foot'}, del, h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'submit',class:'btn primary'}, isNew?'Add':'Save'))));
   showModal(form);
+}
+function activitiesBlock(){
+  const t = todayIso();
+  const acts = state.events.filter(e=>e.repeat && e.repeat!=='none' && e.kind!=='birthday' && (!e.until || e.until>=t))
+    .sort((a,b)=>(a.time||'').localeCompare(b.time||''));
+  const addAct = () => openEventModal(null, t, {kind:'sport', repeat:'days', remind:'30'});
+  return h('section',{class:'quick',style:'margin-top:16px'},
+    h('div',{style:'display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap'},
+      h('p',{class:'quick-h',style:'margin:0'},'My sports & activities'),
+      h('button',{class:'btn sm primary',onclick:addAct},'+ Add sport or activity')),
+    acts.length ? h('ul',{class:'evlist'}, ...acts.map(ev=>h('li',{class:'evrow',style:'grid-template-columns:auto minmax(0,1fr) auto'},
+        h('span',{class:'kd'}, EV_LABEL[ev.kind]||'Event'),
+        h('div',{style:'min-width:0'}, h('button',{class:'tt',onclick:()=>openEventModal(ev)}, ev.title),
+          h('div',{class:'sub'}, [repeatText(ev), ev.time ? fmtTime(ev.time)+(ev.end?'–'+fmtTime(ev.end):'') : '', ev.place||''].filter(Boolean).join(' · '))),
+        h('button',{class:'btn sm',onclick:()=>openEventModal(ev)},'Edit'))))
+      : h('p',{class:'hint',style:'margin:8px 0 0'},'Add practices, games, lessons, clubs or work shifts that happen every week. They’ll show up on your calendar, your Today list and your reminders.'));
 }
 function renderCalendarPage(){
   const t = todayIso();
@@ -1127,7 +1166,7 @@ function renderCalendarPage(){
     h('div',{class:'actions'}, h('button',{class:'btn primary',onclick:()=>openEventModal(null, state.calDay)},'+ Add event')));
   const done = h('label',{class:'chk'}, h('input',{type:'checkbox',id:'showDone2',checked:state.showDone||null,onchange:e=>{state.showDone=e.target.checked;render();}}),'Show completed');
   const controls = h('div',{class:'controls'}, h('div',{class:'ctl-l'}, calNav()), done);
-  return [head, controls, ...renderCalendar(all, null, true)];
+  return [head, activitiesBlock(), controls, ...renderCalendar(all, null, true)];
 }
 
 /* ---------- light / dark ---------- */
@@ -1216,7 +1255,8 @@ function icsText(){
     else L.push('DTSTART;VALUE=DATE:'+day, 'DTEND;VALUE=DATE:'+addDays(ev.date,1).replace(/-/g,''));
     if(ev.place) L.push('LOCATION:'+esc(ev.place));
     if(ev.notes) L.push('DESCRIPTION:'+esc(ev.notes));
-    if(ev.repeat && ev.repeat!=='none'){ const rule = ev.repeat==='weekdays' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' : 'FREQ='+ev.repeat.toUpperCase(); L.push('RRULE:'+rule+(ev.until?';UNTIL='+ev.until.replace(/-/g,'')+'T235959':'')); }
+    if(ev.repeat && ev.repeat!=='none'){ L.push('RRULE:'+ruleFor(ev)+(ev.until?';UNTIL='+ev.until.replace(/-/g,'')+'T235959':''));
+      for(const sk of ev.skipOn||[]) L.push(ev.time ? 'EXDATE:'+sk.replace(/-/g,'')+'T'+ev.time.replace(':','')+'00' : 'EXDATE;VALUE=DATE:'+sk.replace(/-/g,'')); }
     if(ev.remind!=='' && ev.remind!=null) L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+esc(ev.title),'TRIGGER:-PT'+Number(ev.remind)+'M','END:VALARM');
     L.push('END:VEVENT');
   }
