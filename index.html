@@ -382,7 +382,7 @@ button{cursor:pointer}
   .sheet{padding:18px 14px 22px;border-radius:18px}
   .sheet-head h1{font-size:28px}
   .pages{width:100%}
-  .pages button{flex:1;padding:9px 8px;font-size:14px}
+  .pages button{flex:1;padding:9px 4px;font-size:13px}
 }
 .modal.wide{max-width:760px}
 .drop{border:2px dashed var(--rule);border-radius:16px;padding:26px 16px;text-align:center;color:var(--ink-2);background:var(--paper)}
@@ -396,6 +396,43 @@ button{cursor:pointer}
 .found .nt{grid-column:2/-1;font-size:12px;color:var(--ink-2);margin-top:-4px}
 .spin{display:inline-block;width:16px;height:16px;border-radius:50%;border:2px solid var(--rule);border-top-color:var(--accent);vertical-align:-3px;margin-right:8px}
 @media (prefers-reduced-motion:no-preference){.spin{animation:sp 0.8s linear infinite}@keyframes sp{to{transform:rotate(360deg)}}}
+/* settings */
+.set-sec{border-top:1px solid var(--rule);padding:18px 0 4px}
+.set-sec:first-of-type{border-top:0}
+.set-sec h2{font-family:var(--f-display);font-weight:600;font-size:21px;margin:0 0 4px}
+.set-sec .lead{margin:0 0 12px;font-size:15px}
+.set-row{display:flex;align-items:center;justify-content:space-between;gap:10px 16px;flex-wrap:wrap;padding:8px 0}
+.set-row > span{font-weight:700}
+.set-row small{display:block;font-weight:400;color:var(--ink-2);font-size:13px}
+.themes{display:flex;gap:10px;flex-wrap:wrap}
+.themes button{display:flex;flex-direction:column;align-items:center;gap:6px;border:2px solid var(--rule);background:var(--sheet);border-radius:14px;padding:10px 12px;font-weight:700;font-size:13px;min-width:86px}
+.themes button i{width:34px;height:34px;border-radius:50%;display:block}
+.themes button[aria-pressed="true"]{border-color:var(--ink)}
+.set-in{background:var(--paper);border:1px solid var(--rule);border-radius:10px;padding:8px 10px;min-width:0}
+.switch{position:relative;width:46px;height:26px;flex:none}
+.switch input{opacity:0;width:100%;height:100%;margin:0;position:absolute;inset:0;cursor:pointer;z-index:1}
+.switch i{position:absolute;inset:0;border-radius:999px;background:var(--rule);transition:background .15s}
+.switch i::after{content:"";position:absolute;top:3px;left:3px;width:20px;height:20px;border-radius:50%;background:var(--sheet);box-shadow:0 1px 3px rgba(0,0,0,.2);transition:transform .15s}
+.switch input:checked + i{background:var(--accent)}
+.switch input:checked + i::after{transform:translateX(20px)}
+.switch input:focus-visible + i{outline:2px solid var(--accent);outline-offset:2px}
+.note{background:var(--accent-soft);border-radius:12px;padding:10px 12px;font-size:14px;margin:8px 0}
+/* events */
+.chip.ev{background:var(--sheet)!important;color:var(--ink)!important;border:1px solid var(--accent);font-weight:700}
+.chip.ev b{color:var(--accent)}
+.dots i.ev{background:var(--accent)!important;border-radius:2px}
+.evlist{list-style:none;margin:8px 0 0;padding:0;display:flex;flex-direction:column;gap:6px}
+.evrow{display:grid;grid-template-columns:72px auto minmax(0,1fr) auto;gap:4px 12px;align-items:start;padding:10px 12px;border-radius:14px;border:1px solid var(--rule);background:var(--sheet)}
+.evrow .tm{font-weight:800;font-size:14px;color:var(--accent);padding-top:1px;font-variant-numeric:tabular-nums}
+.evrow .kd{font-size:12px;font-weight:800;border-radius:999px;padding:1px 9px;border:1.5px solid var(--accent);color:var(--accent);white-space:nowrap;margin-top:1px}
+.evrow .tt{font-weight:700;background:none;border:0;padding:0;text-align:left;font-size:15px;overflow-wrap:anywhere}
+.evrow .sub{font-size:13px;color:var(--ink-2)}
+.evrow .gcal{font-size:12px;font-weight:700;color:var(--accent);text-decoration:none;white-space:nowrap}
+.evrow.done .tt{text-decoration:line-through;color:var(--done)}
+.evrow input[type=checkbox]{width:18px;height:18px;accent-color:var(--accent);margin:2px 0 0}
+.sched-h{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:18px 0 0}
+.sched-h h2{font-family:var(--f-display);font-weight:600;font-size:19px;margin:0}
+@media (max-width:760px){.evrow{grid-template-columns:auto minmax(0,1fr) auto} .evrow .kd{display:none} .themes button{min-width:0;flex:1;padding:8px 2px;font-size:11px;gap:4px} .themes button i{width:28px;height:28px}}
 @media (max-width:760px){.found li{grid-template-columns:auto minmax(0,1fr) minmax(0,1fr)} .found li .ti{grid-column:2/-1}}
 
 /* login screen */
@@ -448,7 +485,7 @@ const state = {
   mode:'loading', readOnly:false, slow:false, loaded:false,
   addingClass:false, newClass:'',
   q:{title:'', type:'homework', classId:null, date:null},
-  palette:'berry', page:'today', todos:[], todoDay:null, todoText:'',
+  palette:'berry', page:'today', events:[], prefs:{mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30}, todos:[], todoDay:null, todoText:'',
   plans:[], planAdd:null, planAddText:'', delArm:null,
   sp:{pick:null, classId:null, title:'', type:'test', date:null, days:3, tasks:[], taskText:''}
 };
@@ -586,8 +623,8 @@ async function keyFor(name, pin){
   }
 }
 const LS = { get(k){ try{ return localStorage.getItem(k); }catch{ return null; } }, set(k,v){ try{ localStorage.setItem(k,v); return true; }catch{ return false; } }, del(k){ try{ localStorage.removeItem(k); }catch{} } };
-const snapshotData = () => ({ name: state.user.name, title: state.title, theme: state.palette,
-  classes: state.classes, items: state.items, plans: state.plans, todos: state.todos, updated: Date.now() });
+const snapshotData = () => ({ name: state.user.name, title: state.title, theme: state.palette, prefs: state.prefs,
+  classes: state.classes, items: state.items, plans: state.plans, todos: state.todos, events: state.events, updated: Date.now() });
 let saveTimer = null;
 function persist(){
   if(!state.user) return;
@@ -599,7 +636,7 @@ function persist(){
   }, 300);
 }
 async function loadPlanner(key){
-  if(FIREBASE_CONFIG) return await cloudGet(key);       // throws a CloudError if the database can't be used
+  if(FIREBASE_CONFIG){ const d = await cloudGet(key); return d && d.deleted ? null : d; }   // throws a CloudError if the database can't be used
   const raw = LS.get('planner:'+key);
   if(raw) return JSON.parse(raw);
   return PRELOADED[key] ? JSON.parse(JSON.stringify(PRELOADED[key])) : null;
@@ -607,9 +644,10 @@ async function loadPlanner(key){
 function useData(d, name, key){
   state.user = {name: d.name || name, key};
   state.title = d.title || DEFAULT_TITLE; state.palette = d.theme || 'berry';
-  state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[];
-  state.loaded = true; state.mode = 'local'; state.page = 'today';
-  applyPalette();
+  state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[]; state.events = d.events||[];
+  state.prefs = {mode:'auto', start:'today', notifyOn:false, daily:'07:30', before:30, ...(d.prefs||{})};
+  state.loaded = true; state.mode = 'local'; state.page = state.prefs.start || 'today';
+  applyPalette(); applyMode();
 }
 
 function startApp(){
@@ -619,7 +657,8 @@ function startApp(){
 }
 function logout(){
   LS.del('planner:session');
-  state.user=null; state.classes=[]; state.items=[]; state.plans=[]; state.todos=[];
+  state.user=null; state.classes=[]; state.items=[]; state.plans=[]; state.todos=[]; state.events=[];
+  delete document.documentElement.dataset.theme;
   document.getElementById('app').hidden = true; showLogin('login');
 }
 function showLogin(mode){
@@ -821,13 +860,15 @@ function renderSheet(){
   if(state.mode==='loading' || (state.mode==='db' && !state.loaded && !state.classes.length)){
     sheet.replaceChildren(h('div',{class:'empty'},h('p',null,'Opening your planner…'))); return;
   }
-  if(!state.classes.length){
+  if(!state.classes.length && state.page!=='settings' && state.page!=='calendar'){
     sheet.replaceChildren(h('div',{class:'setup'},
       h('h3',null,'Step 1: add your classes'),
       h('p',null,'Type a class name and press Enter. You can add more anytime with “+ Add class” on the left.'),
       classInput('newClassMain','e.g. Biology')));
     return;
   }
+  if(state.page==='settings'){ sheet.replaceChildren(...renderSettings()); return; }
+  if(state.page==='calendar'){ sheet.replaceChildren(...renderCalendarPage()); return; }
   if(state.page==='study'){ sheet.replaceChildren(...renderStudy()); return; }
   if(state.page==='today'){ sheet.replaceChildren(...renderToday()); return; }
 
@@ -893,7 +934,7 @@ function calNav(){
     h('button',{class:'btn sm',onclick:()=>{const t=todayIso(); state.calMonth=t.slice(0,7); state.calDay=t; render();}},'Today'));
 }
 
-function renderCalendar(all, cls){
+function renderCalendar(all, cls, withEvents){
   const t = todayIso();
   const first = parse(state.calMonth+'-01');
   const start = new Date(first); start.setDate(1-first.getDay());
@@ -921,8 +962,12 @@ function renderCalendar(all, cls){
         onkeydown:e=>{ if(e.key==='Enter'){e.preventDefault();e.stopPropagation();openItemModal(i);} }},
         TYPE_SHORT[i.type] ? h('b',null,TYPE_SHORT[i.type]) : null, i.title));
     });
+    const evs = withEvents ? eventsOn(ds) : [];
+    evs.slice(0,2).forEach(ev=>cell.append(h('span',{class:'chip ev'+(ev.doneToday?' done':''),title:`${EV_LABEL[ev.kind]||'Event'}: ${ev.title}${ev.time?' at '+fmtTime(ev.time):''}`,role:'button',tabindex:'0',
+      onclick:e=>{e.stopPropagation(); openEventModal(ev.src);}, onkeydown:e=>{ if(e.key==='Enter'){e.preventDefault();e.stopPropagation();openEventModal(ev.src);} }},
+      h('b',null, ev.time ? fmtTime(ev.time).replace(/:00|\s/g,'').toLowerCase() : (EV_SHORT[ev.kind]||'')), ev.title)));
     const st = studyPlansOn(ds, cls);
-    const room = Math.max(0, 3-Math.min(its.length,3));
+    const room = Math.max(0, 3-Math.min(its.length,3)-Math.min(evs.length,2));
     st.slice(0,room).forEach(({plan,sess})=>{
       const left = sess.tasks.filter(x=>!x.done).length;
       cell.append(h('span',{class:'chip study'+(left?'':' done'),title:`Study for ${plan.title}`,role:'button',tabindex:'0',
@@ -930,9 +975,9 @@ function renderCalendar(all, cls){
         onkeydown:e=>{ if(e.key==='Enter'){e.preventDefault();e.stopPropagation();state.page='study';render();} }},
         h('b',null,'STUDY'), plan.title));
     });
-    const hidden = Math.max(0,its.length-3) + Math.max(0, st.length-room);
+    const hidden = Math.max(0,its.length-3) + Math.max(0, st.length-room) + Math.max(0, evs.length-2);
     if(hidden) cell.append(h('span',{class:'more',text:`+${hidden} more`}));
-    if(its.length||st.length) cell.append(h('span',{class:'dots'},
+    if(its.length||st.length||evs.length) cell.append(h('span',{class:'dots'}, ...evs.slice(0,2).map(()=>h('i',{class:'ev'})),
       ...its.slice(0,4).map(i=>{const c=classById(i.classId); return h('i',{class:`sw-${c?c.color:'1'}`+((i.type==='test'||i.type==='quiz')?' test':'')});}),
       ...st.slice(0,2).map(()=>h('i',{class:'study'}))));
     cells.push(cell);
@@ -942,12 +987,276 @@ function renderCalendar(all, cls){
   const selItems = (byDay.get(sel)||[]);
   const dayview = h('section',{class:'dayview'},
     h('div',{class:'day-h'}, h('span',{class:'d',text:dayLabel(sel)}), h('span',{class:'r',text:rel(diff(sel))}),
-      h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>{ state.q.date=sel; render(); const n=document.getElementById('qTitle'); if(n){ n.scrollIntoView({block:'center'}); n.focus(); } }},'+ Add on this day')),
+      withEvents ? null
+        : h('button',{class:'btn sm',style:'margin-left:auto',onclick:()=>{ state.q.date=sel; render(); const n=document.getElementById('qTitle'); if(n){ n.scrollIntoView({block:'center'}); n.focus(); } }},'+ Add on this day')),
+    withEvents ? scheduleBlock(sel, false) : null,
     selItems.length ? h('ul',{class:'list'}, ...selItems.map(i=>itemRow(i,false)))
-      : h('div',{class:'empty sm'}, h('p',null,'Nothing due this day.')),
+      : (withEvents && eventsOn(sel).length ? null : h('div',{class:'empty sm'}, h('p',null, withEvents ? 'Nothing on this day.' : 'Nothing due this day.'))),
     studyBlock(sel, cls, 'Studying this day'));
 
   return [h('div',{class:'cal'},...cells), dayview];
+}
+
+/* ---------- events: appointments, concerts, practices, reminders… ---------- */
+const EV_KINDS = [['appointment','Appointment','APPT'],['concert','Concert / performance','SHOW'],['practice','Practice / rehearsal','PRAC'],
+  ['game','Game / meet','GAME'],['meeting','Club / meeting','MTG'],['work','Work shift','WORK'],['birthday','Birthday','BDAY'],
+  ['reminder','Reminder','REM'],['other','Other','EVT']];
+const EV_LABEL = Object.fromEntries(EV_KINDS.map(([k,l])=>[k,l]));
+const EV_SHORT = Object.fromEntries(EV_KINDS.map(([k,,s])=>[k,s]));
+const REMIND_OPTS = [['','No reminder'],['0','At the start'],['10','10 minutes before'],['30','30 minutes before'],['60','1 hour before'],['120','2 hours before'],['1440','1 day before']];
+// every event that happens on a day (repeating ones included), sorted by time
+function eventsOn(ds){
+  const out = [];
+  for(const ev of state.events){
+    let hit = ev.date===ds;
+    if(!hit && ev.repeat && ev.repeat!=='none' && ds>ev.date && (!ev.until || ds<=ev.until)){
+      const gap = between(ev.date, ds);
+      if(ev.repeat==='weekly') hit = gap % 7 === 0;
+      else if(ev.repeat==='daily') hit = true;
+      else if(ev.repeat==='weekdays') hit = ![0,6].includes(parse(ds).getDay());
+      else if(ev.repeat==='yearly') hit = ev.date.slice(5)===ds.slice(5);
+    }
+    if(hit) out.push({...ev, src:ev, on:ds, doneToday:(ev.doneOn||[]).includes(ds)});
+  }
+  return out.sort((a,b)=>(a.time||'00:00').localeCompare(b.time||'00:00'));
+}
+function gcalLink(ev, ds){
+  const day = (ds||ev.date).replace(/-/g,'');
+  let dates;
+  if(ev.time){
+    const st = day+'T'+ev.time.replace(':','')+'00';
+    const endT = ev.end || (()=>{ const [h,m]=ev.time.split(':').map(Number); const e=h*60+m+60; return pad(Math.min(23,Math.floor(e/60)))+':'+pad(e%60); })();
+    dates = st+'/'+day+'T'+endT.replace(':','')+'00';
+  } else { const next = addDays(ds||ev.date,1).replace(/-/g,''); dates = day+'/'+next; }
+  const q = new URLSearchParams({action:'TEMPLATE', text:ev.title, dates, details: [ev.notes||'', 'From My Planner'].filter(Boolean).join('\n'), location: ev.place||''});
+  try { q.set('ctz', Intl.DateTimeFormat().resolvedOptions().timeZone); } catch {}
+  if(ev.repeat==='weekly' || ev.repeat==='daily' || ev.repeat==='yearly' || ev.repeat==='weekdays'){
+    const rule = ev.repeat==='weekdays' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' : 'FREQ='+ev.repeat.toUpperCase();
+    q.set('recur','RRULE:'+rule+(ev.until?';UNTIL='+ev.until.replace(/-/g,''):''));
+  }
+  return 'https://calendar.google.com/calendar/render?'+q.toString();
+}
+function scheduleBlock(ds, onToday){
+  const evs = eventsOn(ds);
+  if(!evs.length && !onToday) return null;
+  const toggle = async (ev, v) => {
+    const src = ev.src; const set = new Set(src.doneOn||[]); v ? set.add(ds) : set.delete(ds);
+    await store.update('events', src.id, {doneOn:[...set]});
+    if(v) toast(`Done: ${ev.title}`, {label:'Undo', run: async()=>{ const s2=new Set(src.doneOn||[]); s2.delete(ds); await store.update('events', src.id, {doneOn:[...s2]}); }});
+  };
+  const rows = evs.map(ev=>h('li',{class:'evrow'+(ev.doneToday?' done':'')},
+    ev.kind==='reminder' ? h('input',{type:'checkbox',id:`evd-${ev.id}-${ds}`,checked:ev.doneToday||null,'aria-label':'Done',onchange:e=>toggle(ev,e.target.checked)})
+      : h('span',{class:'tm'}, ev.time ? fmtTime(ev.time) : 'All day'),
+    h('span',{class:'kd'}, EV_LABEL[ev.kind]||'Event'),
+    h('div',{style:'min-width:0'},
+      h('button',{class:'tt',onclick:()=>openEventModal(ev.src)}, ev.title),
+      h('div',{class:'sub'}, [ev.kind==='reminder' && ev.time ? fmtTime(ev.time) : '', ev.end ? 'until '+fmtTime(ev.end) : '', ev.place||'', ev.repeat && ev.repeat!=='none' ? 'repeats '+ev.repeat : ''].filter(Boolean).join(' · '))),
+    h('a',{class:'gcal',href:gcalLink(ev, ds),target:'_blank',rel:'noopener',title:'Add to Google Calendar to get phone notifications'},'+ Google Cal')));
+  return h('section',null,
+    h('div',{class:'sched-h'}, h('h2',null, onToday ? 'Schedule' : 'Events'),
+      h('button',{class:'btn sm',onclick:()=>openEventModal(null, ds)},'+ Add event')),
+    rows.length ? h('ul',{class:'evlist'}, ...rows) : h('p',{class:'hint',style:'margin:6px 0 0'},'No appointments or events. Add practices, concerts, appointments or reminders here.'));
+}
+function openEventModal(ev, presetDate){
+  const isNew = !ev;
+  const d = ev ? {...ev} : {title:'', kind:'appointment', date: presetDate || todayIso(), time:'', end:'', place:'', notes:'', remind: String(state.prefs.before ?? 30), repeat:'none', until:''};
+  const f = (label, ctl, full) => h('div',{class:'field', style: full ? 'grid-column:1/-1' : null}, h('label',{for:ctl.id},label), ctl);
+  const title = h('input',{id:'evTitle',maxlength:'100',placeholder:'e.g. Dentist, Choir concert, Soccer practice',value:d.title});
+  const kind = h('select',{id:'evKind'}, ...EV_KINDS.map(([k,l])=>h('option',{value:k,selected:d.kind===k||null},l)));
+  const date = h('input',{id:'evDate',type:'date',value:d.date});
+  const time = h('input',{id:'evTime',type:'time',value:d.time||''});
+  const end = h('input',{id:'evEnd',type:'time',value:d.end||''});
+  const place = h('input',{id:'evPlace',maxlength:'100',placeholder:'Optional',value:d.place||''});
+  const remind = h('select',{id:'evRemind'}, ...REMIND_OPTS.map(([v,l])=>h('option',{value:v,selected:String(d.remind??'')===v||null},l)));
+  const repeat = h('select',{id:'evRepeat',onchange:()=>{ untilWrap.hidden = repeat.value==='none'; }},
+    ...[['none','Doesn’t repeat'],['weekly','Every week'],['weekdays','Every weekday'],['daily','Every day'],['yearly','Every year']].map(([v,l])=>h('option',{value:v,selected:(d.repeat||'none')===v||null},l)));
+  const until = h('input',{id:'evUntil',type:'date',value:d.until||''});
+  const untilWrap = f('Repeat until (optional)', until); untilWrap.hidden = (d.repeat||'none')==='none';
+  const notes = h('textarea',{id:'evNotes',maxlength:'500',placeholder:'Optional'}); notes.value = d.notes||'';
+  const err = h('p',{class:'err',hidden:true});
+  let armed = false;
+  const del = !isNew ? h('button',{type:'button',class:'btn danger',onclick:async e=>{
+    if(!armed){ armed=true; e.target.classList.add('armed'); e.target.textContent='Confirm delete'; return; }
+    await store.remove('events', ev.id); closeModal(); toast('Event deleted');
+  }},'Delete') : null;
+  const form = h('form',{class:'modal',onsubmit:async e=>{
+    e.preventDefault();
+    const t = title.value.trim();
+    if(!t){ err.hidden=false; err.textContent='Give it a name.'; return; }
+    if(!date.value){ err.hidden=false; err.textContent='Pick a date.'; return; }
+    const data = {title:t, kind:kind.value, date:date.value, time:time.value||'', end:end.value||'', place:place.value.trim(), notes:notes.value.trim(),
+      remind: remind.value, repeat: repeat.value, until: repeat.value==='none' ? '' : (until.value||'')};
+    if(isNew) await store.add('events', {...data, doneOn:[], created:Date.now()}); else await store.update('events', ev.id, data);
+    closeModal(); toast(isNew ? `Added ${t}` : 'Saved');
+  }},
+    h('h2',null, isNew ? 'Add an event' : 'Edit event'),
+    h('div',{class:'row2'}, f('What is it?', title, true), f('Type', kind), f('Date', date), f('Starts (optional)', time), f('Ends (optional)', end),
+      f('Where', place), f('Reminder', remind), f('Repeats', repeat), untilWrap, f('Notes', notes, true)),
+    err,
+    h('p',{class:'hint',style:'margin:0 0 8px'},'Reminders pop up while My Planner is open (turn them on in Settings). For phone alerts, use “+ Google Cal” on the event.'),
+    h('div',{class:'modal-foot'}, del, h('div',{class:'r'}, h('button',{type:'button',class:'btn',onclick:closeModal},'Cancel'), h('button',{type:'submit',class:'btn primary'}, isNew?'Add':'Save'))));
+  showModal(form);
+}
+function renderCalendarPage(){
+  const t = todayIso();
+  if(!state.calDay) state.calDay = t;
+  const all = state.items.filter(i=>classById(i.classId));
+  const upcoming = state.events.filter(e=>e.date>=t || (e.repeat && e.repeat!=='none')).length;
+  const head = h('div',{class:'sheet-head'},
+    h('div',{style:'min-width:0'}, h('h1',null,'Calendar'),
+      h('p',{class:'lead'},'Homework, tests, study plans and everything else: appointments, concerts, practices and reminders.'),
+      h('p',{class:'meta'}, h('b',null,String(upcoming)), ` event${upcoming===1?'':'s'} coming up`)),
+    h('div',{class:'actions'}, h('button',{class:'btn primary',onclick:()=>openEventModal(null, state.calDay)},'+ Add event')));
+  const done = h('label',{class:'chk'}, h('input',{type:'checkbox',id:'showDone2',checked:state.showDone||null,onchange:e=>{state.showDone=e.target.checked;render();}}),'Show completed');
+  const controls = h('div',{class:'controls'}, h('div',{class:'ctl-l'}, calNav()), done);
+  return [head, controls, ...renderCalendar(all, null, true)];
+}
+
+/* ---------- light / dark ---------- */
+function applyMode(){ const r=document.documentElement; const m=state.prefs.mode; if(m==='light'||m==='dark') r.dataset.theme=m; else delete r.dataset.theme; }
+
+/* ---------- reminders: pop-up notifications while the planner is open ---------- */
+const notifSupported = () => typeof Notification !== 'undefined';
+function firedSet(){ try { return new Set(JSON.parse(LS.get('planner:fired:'+(state.user&&state.user.key))||'[]')); } catch { return new Set(); } }
+function markFired(set){ LS.set('planner:fired:'+(state.user&&state.user.key), JSON.stringify([...set].slice(-400))); }
+function notify(title, body, tag){
+  try { const n = new Notification(title, {body, tag, icon:'data:image/svg+xml,'+encodeURIComponent('<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64"><rect width="64" height="64" rx="14" fill="#9a87b5"/><path d="M18 34l9 9 19-21" stroke="#fff" stroke-width="7" fill="none" stroke-linecap="round" stroke-linejoin="round"/></svg>')});
+    n.onclick = () => { window.focus(); goPage('today'); n.close(); }; } catch {}
+}
+function checkReminders(){
+  if(!state.user || !state.prefs.notifyOn || !notifSupported() || Notification.permission!=='granted') return;
+  const now = new Date(), t = iso(now), mins = now.getHours()*60 + now.getMinutes();
+  const fired = firedSet(); let changed = false;
+  const fire = (key, title, body) => { if(fired.has(key)) return; fired.add(key); changed = true; notify(title, body, key); };
+  // events (today and tomorrow, for "1 day before")
+  for(const ds of [t, addDays(t,1)]){
+    for(const ev of eventsOn(ds)){
+      if(ev.remind==='' || ev.remind==null || ev.doneToday) continue;
+      const start = ev.time ? ev.time.split(':').map(Number).reduce((h,m)=>h*60+m) : 8*60;
+      const at = start - Number(ev.remind) + (ds===t ? 0 : 1440);
+      if(mins >= at && mins < at + 90) fire(`ev:${ev.id}:${ds}`, ev.title, `${ds===t?'Today':'Tomorrow'}${ev.time?' at '+fmtTime(ev.time):''}${ev.place?' · '+ev.place:''}`);
+    }
+  }
+  // daily summary
+  const [dh,dm] = (state.prefs.daily||'07:30').split(':').map(Number), dAt = dh*60+dm;
+  if(state.prefs.daily && mins >= dAt && mins < dAt + 180){
+    const list = todosFor(t).filter(x=>!x.done), imp = list.filter(x=>x.imp);
+    const evs = eventsOn(t).filter(e=>e.kind!=='reminder');
+    const bits = [];
+    if(imp.length) bits.push(`${imp.length} important: ${imp.slice(0,3).map(x=>x.text).join(', ')}`);
+    else if(list.length) bits.push(`${list.length} thing${list.length===1?'':'s'} to do`);
+    if(evs.length) bits.push(`${evs.length} event${evs.length===1?'':'s'}: ${evs.slice(0,2).map(e=>e.title).join(', ')}`);
+    if(bits.length) fire(`daily:${t}`, 'Your day in My Planner', bits.join(' · '));
+  }
+  if(changed) markFired(fired);
+}
+setInterval(checkReminders, 30000);
+document.addEventListener('visibilitychange', checkReminders);
+
+/* ---------- calendar file: import into Google/Apple Calendar for phone alerts ---------- */
+function icsText(){
+  const esc = s => String(s||'').replace(/\\/g,'\\\\').replace(/\n/g,'\\n').replace(/[,;]/g,m=>'\\'+m);
+  const stamp = new Date().toISOString().replace(/[-:]/g,'').replace(/\.\d+Z$/,'Z');
+  const L = ['BEGIN:VCALENDAR','VERSION:2.0','PRODID:-//My Planner//EN','CALSCALE:GREGORIAN','X-WR-CALNAME:My Planner'];
+  const t = todayIso();
+  for(const ev of state.events){
+    if(ev.date < addDays(t,-1) && (!ev.repeat || ev.repeat==='none')) continue;
+    const day = ev.date.replace(/-/g,'');
+    L.push('BEGIN:VEVENT','UID:ev-'+ev.id+'@my-planner','DTSTAMP:'+stamp,'SUMMARY:'+esc(ev.title));
+    if(ev.time){ L.push('DTSTART:'+day+'T'+ev.time.replace(':','')+'00'); if(ev.end) L.push('DTEND:'+day+'T'+ev.end.replace(':','')+'00'); }
+    else L.push('DTSTART;VALUE=DATE:'+day, 'DTEND;VALUE=DATE:'+addDays(ev.date,1).replace(/-/g,''));
+    if(ev.place) L.push('LOCATION:'+esc(ev.place));
+    if(ev.notes) L.push('DESCRIPTION:'+esc(ev.notes));
+    if(ev.repeat && ev.repeat!=='none'){ const rule = ev.repeat==='weekdays' ? 'FREQ=WEEKLY;BYDAY=MO,TU,WE,TH,FR' : 'FREQ='+ev.repeat.toUpperCase(); L.push('RRULE:'+rule+(ev.until?';UNTIL='+ev.until.replace(/-/g,'')+'T235959':'')); }
+    if(ev.remind!=='' && ev.remind!=null) L.push('BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+esc(ev.title),'TRIGGER:-PT'+Number(ev.remind)+'M','END:VALARM');
+    L.push('END:VEVENT');
+  }
+  for(const i of state.items){
+    const c = classById(i.classId); if(!c || i.done || i.due < t) continue;
+    const day = i.due.replace(/-/g,'');
+    L.push('BEGIN:VEVENT','UID:hw-'+i.id+'@my-planner','DTSTAMP:'+stamp,'SUMMARY:'+esc(`${c.name}: ${i.title} (${TYPE_LABEL[i.type]||'Due'})`),
+      'DTSTART;VALUE=DATE:'+day,'DTEND;VALUE=DATE:'+addDays(i.due,1).replace(/-/g,''),'TRANSP:TRANSPARENT',
+      'BEGIN:VALARM','ACTION:DISPLAY','DESCRIPTION:'+esc(i.title+' is due tomorrow'),'TRIGGER:-PT6H','END:VALARM','END:VEVENT');
+  }
+  L.push('END:VCALENDAR');
+  return L.join('\r\n');
+}
+function downloadIcs(){
+  const blob = new Blob([icsText()], {type:'text/calendar'});
+  const a = document.createElement('a'); a.href = URL.createObjectURL(blob); a.download = 'my-planner.ics';
+  document.body.append(a); a.click(); a.remove(); setTimeout(()=>URL.revokeObjectURL(a.href), 2000);
+  toast('Calendar file saved to your downloads');
+}
+
+/* ---------- settings page ---------- */
+async function changePasscode(newPin){
+  const oldKey = state.user.key, newKey = await keyFor(state.user.name, newPin);
+  if(newKey===oldKey) return 'That’s already your passcode.';
+  try { if(FIREBASE_CONFIG){ if(await cloudGet(newKey)) return 'Pick a different passcode.'; await cloudSet(newKey, snapshotData()); await cloudSet(oldKey, {deleted:true}); } }
+  catch(e){ return cloudMessage(e); }
+  LS.set('planner:'+newKey, JSON.stringify(snapshotData())); LS.del('planner:'+oldKey);
+  state.user.key = newKey; LS.set('planner:session', JSON.stringify({key:newKey, name:state.user.name}));
+  return null;
+}
+function renderSettings(){
+  const P = state.prefs, setP = (k,v) => { P[k]=v; persist(); render(); };
+  const sec = (title, lead, ...kids) => h('section',{class:'set-sec'}, h('h2',null,title), lead ? h('p',{class:'lead'},lead) : null, ...kids);
+  const row = (label, sub, ctl) => h('div',{class:'set-row'}, h('span',null,label, sub ? h('small',null,sub) : null), ctl);
+  const sw = (id, on, fn) => h('label',{class:'switch'}, h('input',{type:'checkbox',id,role:'switch',checked:on||null,onchange:e=>fn(e.target.checked)}), h('i'));
+  const file = h('input',{type:'file',accept:'.json,application/json',hidden:true,onchange:e=>restoreBackup(e.target.files[0])});
+
+  const themes = h('div',{class:'themes',role:'group','aria-label':'Color theme'}, ...PALETTES.map(([k,l,c])=>h('button',{type:'button','aria-pressed':String(state.palette===k),
+    onclick:()=>{ state.palette=k; applyPalette(); persist(); render(); }}, h('i',{style:`background:${c}`}), l)));
+  const mode = h('div',{class:'seg'}, ...[['auto','Match device'],['light','Light'],['dark','Dark']].map(([k,l])=>h('button',{type:'button','aria-pressed':String((P.mode||'auto')===k),onclick:()=>{ setP('mode',k); applyMode(); }},l)));
+  const nameIn = h('input',{id:'setName',class:'set-in',maxlength:'40',value:state.title,onchange:e=>{ const v=e.target.value.trim(); if(v){ state.title=v; persist(); render(); toast('Planner renamed'); } }});
+  const start = h('select',{id:'setStart',class:'set-in',onchange:e=>setP('start',e.target.value)}, ...[['today','Today'],['calendar','Calendar'],['planner','Classes'],['study','Study']].map(([k,l])=>h('option',{value:k,selected:(P.start||'today')===k||null},l)));
+
+  const perm = notifSupported() ? Notification.permission : 'unsupported';
+  const notifOn = P.notifyOn && perm==='granted';
+  const notifSwitch = sw('setNotify', notifOn, async v=>{
+    if(!v){ setP('notifyOn', false); return; }
+    if(!notifSupported()){ toast('This browser can’t show notifications.'); render(); return; }
+    let res = Notification.permission;
+    if(res==='default'){ try { res = await Notification.requestPermission(); } catch { res = 'denied'; } }
+    if(res==='granted'){ setP('notifyOn', true); notify('Reminders are on', 'You’ll get pop-ups like this while My Planner is open.', 'test'); }
+    else { P.notifyOn=false; persist(); render(); toast('Notifications are blocked. Allow them in your browser’s site settings (the icon left of the address).'); }
+  });
+  const daily = h('input',{id:'setDaily',type:'time',class:'set-in',value:P.daily||'',onchange:e=>setP('daily', e.target.value)});
+  const before = h('select',{id:'setBefore',class:'set-in',onchange:e=>setP('before', e.target.value)}, ...REMIND_OPTS.map(([v,l])=>h('option',{value:v,selected:String(P.before??'30')===v||null},l)));
+
+  const pin1 = h('input',{id:'setPin1',class:'set-in',type:'password',inputmode:'numeric',maxlength:'4',placeholder:'New',autocomplete:'new-password',style:'width:90px'});
+  const pin2 = h('input',{id:'setPin2',class:'set-in',type:'password',inputmode:'numeric',maxlength:'4',placeholder:'Again',autocomplete:'new-password',style:'width:90px'});
+  const pinBtn = h('button',{class:'btn sm',onclick:async()=>{
+    const a=pin1.value.trim(), b=pin2.value.trim();
+    if(!/^\d{4}$/.test(a)) return toast('Your passcode is 4 numbers.');
+    if(a!==b) return toast('The two passcodes don’t match.');
+    pinBtn.disabled = true; const msg = await changePasscode(a); pinBtn.disabled = false;
+    if(msg) toast(msg); else { pin1.value=''; pin2.value=''; toast('Passcode changed. Use the new one next time you log in.'); }
+  }},'Change');
+
+  return [
+    h('div',{class:'sheet-head'}, h('div',null, h('h1',null,'Settings'), h('p',{class:'lead'},`Make My Planner yours, ${state.user.name}.`))),
+    sec('Look', null,
+      row('Color theme', 'Class colors change to match.', themes),
+      row('Light or dark', null, mode)),
+    sec('Planner', null,
+      row('Planner name', 'Shown at the top of the page.', nameIn),
+      row('Open to', 'The page you see first.', start)),
+    sec('Reminders', null,
+      row('Pop-up reminders', perm==='denied' ? 'Blocked by your browser. Allow notifications for this site in the browser’s site settings.' : 'Shows notifications on this device while My Planner is open in a tab.', notifSwitch),
+      row('Morning summary', 'What’s due and what’s happening today.', daily),
+      row('Default event reminder', 'Used for new events.', before),
+      h('div',{class:'note'}, h('b',null,'Want alerts on your phone, even when the planner is closed? '),
+        'Tap “+ Google Cal” on any event, or download your calendar file below and import it into Google Calendar (Settings → Import & export). Google Calendar will then remind you like any other event.'),
+      row('Calendar file', 'Upcoming events, homework and tests, with reminders.', h('button',{class:'btn sm',onclick:downloadIcs},'Download .ics'))),
+    sec('Backup', 'Keep a copy of your planner, or move one in.',
+      row('Save a backup', null, h('button',{class:'btn sm',onclick:saveBackup},'Save backup')),
+      row('Load a backup', 'Replaces what’s in this planner now.', h('span',null, h('button',{class:'btn sm',onclick:()=>file.click()},'Load backup'), file))),
+    sec('Account', null,
+      row('Name', null, h('span',{style:'font-weight:700'}, state.user.name)),
+      row('Change passcode', null, h('span',{style:'display:flex;gap:6px;align-items:center;flex-wrap:wrap'}, pin1, pin2, pinBtn)),
+      row('Log out', 'Your planner stays saved.', h('button',{class:'btn sm danger',onclick:logout},'Log out')))
+  ];
 }
 
 /* ---------- custom class colors ("x" + hex) ---------- */
@@ -969,11 +1278,7 @@ function customColorCss(keys){
 function renderWho(){
   const w = document.getElementById('who'); if(!w) return;
   if(!state.user){ w.replaceChildren(); return; }
-  const file = h('input',{type:'file',accept:'.json,application/json',hidden:true,onchange:e=>restoreBackup(e.target.files[0])});
-  w.replaceChildren(h('span',null,`Hi, ${state.user.name}`),
-    h('button',{title:'Save a copy of your planner as a file',onclick:saveBackup},'Save backup'),
-    h('button',{title:'Load your planner from a backup file',onclick:()=>file.click()},'Load backup'), file,
-    h('button',{onclick:logout},'Log out'));
+  w.replaceChildren(h('span',null,`Hi, ${state.user.name}`));
 }
 
 function saveBackup(){
@@ -995,7 +1300,7 @@ async function restoreBackup(f){
   const hasStuff = state.classes.length || state.items.length;
   if(hasStuff && restoreArmed!==f.name){ restoreArmed=f.name; toast('This will replace what’s in this planner now. Choose the file again to confirm.'); return; }
   restoreArmed = null;
-  state.title = d.title || state.title; state.palette = d.theme || state.palette;
+  state.title = d.title || state.title; state.palette = d.theme || state.palette; state.events = d.events || state.events; if(d.prefs) state.prefs = {...state.prefs, ...d.prefs};
   state.classes = d.classes||[]; state.items = d.items||[]; state.plans = d.plans||[]; state.todos = d.todos||[];
   applyPalette(); persist(); render();
   toast(`Loaded ${state.classes.length} classes and ${state.items.length} assignments`);
@@ -1005,6 +1310,7 @@ async function restoreBackup(f){
 const PALETTES = [['berry','Lavender','#9a87b5'],['ocean','Dusty blue','#7f9cb4'],['sunset','Clay','#c39478'],['rose','Dusty rose','#c08d98'],['sage','Sage','#87a08c']];
 function applyPalette(){ const r=document.documentElement; if(state.palette==='berry') delete r.dataset.palette; else r.dataset.palette=state.palette; }
 function renderPalette(){
+  return; // colors now live on the Settings page
   document.getElementById('palette').replaceChildren(h('span',null,'Colors'),
     ...PALETTES.map(([k,l,c])=>h('button',{title:l,'aria-label':`${l} colors`,'aria-pressed':String(state.palette===k),style:`background:${c}`,
       onclick:()=>{ state.palette=k; applyPalette(); store.saveMeta(); render(); }})));
@@ -1017,8 +1323,10 @@ function renderPages(){
   const btn = (k,l,extra) => h('button',{'aria-current':state.page===k?'page':null,onclick:()=>goPage(k)}, l, extra||null);
   document.getElementById('pages').replaceChildren(
     btn('today','Today', imp ? h('span',{class:'badge',title:`${imp} important`,text:imp}) : null),
+    btn('calendar','Calendar'),
     btn('planner','Classes'),
-    btn('study','Study tracker'));
+    btn('study','Study'),
+    btn('settings','Settings'));
   document.getElementById('layout').classList.toggle('solo', state.page!=='planner');
 }
 
@@ -1120,9 +1428,9 @@ function renderToday(){
       done.length ? [h('p',{class:'subh'},`Done (${done.length})`), h('ul',{class:'todos'}, ...done.map(row))] : null
     ] : h('div',{class:'empty'},
       h('h3',null,'Nothing on your list'),
-      h('p',null,'This list fills in from your assignments, tests and study plans. Add them on the Classes & assignments page, or add your own to-do above.'));
+      h('p',null,'This list fills in from your assignments, tests and study plans. Add homework and tests on the Classes page, or add your own to-do above.'));
 
-  return [head, strip, add].concat(body).flat().filter(Boolean);
+  return [head, strip, scheduleBlock(ds, true), add].concat(body).flat().filter(Boolean);
 }
 
 /* ---------- study tracker ---------- */
