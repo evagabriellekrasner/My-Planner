@@ -2186,15 +2186,12 @@ async function pdfPages(file, onPage){
     onPage && onPage(n, total);
     const page = await pdf.getPage(n), tc = await page.getTextContent();
     // rebuild lines (and table rows) from text positions
-    const rows = new Map();
-    for(const it of tc.items){
-      if(!it.str || !it.str.trim()) continue;
-      const y = Math.round((it.transform?it.transform[5]:0)/3)*3, x = it.transform?it.transform[4]:0;
-      if(!rows.has(y)) rows.set(y, []);
-      rows.get(y).push({x, w: it.width||0, s:it.str});
-    }
+    const raw = tc.items.filter(it=>it.str && it.str.trim()).map(it=>({x: it.transform?it.transform[4]:0, y: it.transform?it.transform[5]:0, w: it.width||0, s: it.str}))
+      .sort((a,b)=>b.y-a.y || a.x-b.x);
+    const groups = [];
+    for(const it of raw){ const g = groups[groups.length-1]; if(g && Math.abs(g.y - it.y) <= 4) g.items.push(it); else groups.push({y: it.y, items:[it]}); }
     const lines = [];
-    for(const [,items] of [...rows.entries()].sort((a,b)=>b[0]-a[0])){
+    for(const {items} of groups){
       items.sort((a,b)=>a.x-b.x);
       const cells = [];
       for(const it of items){
@@ -2246,7 +2243,14 @@ const COLS = [
   ['test', /^(assessments?|tests?|quizzes|quiz|tests?\s*\/\s*quizzes)$/i],
   ['class',/(class\s*work|in[- ]class|^class$|agenda|activit|lesson|topic|objective|learning target|notes|warm[- ]?up|bell ?ringer|today|^do now)/i],
 ];
-const NOTHING = /^(none|no hw|no homework|n\/a|na|-+|—|–|tbd|tba|x|no school|holiday|break)\.?$/i;
+const NOTHING = /^(none|no hw|no homework|n\/a|na|-+|—|–|tbd|tba|x|no school|holiday|break)\.?$|^(no school|no class|no classes|no homework)\b/i;
+// "Read ch. 22 for Wednesday 11/4" -> the real due date is the one in the text
+function dueInText(text){
+  const re = /\b(for|due|on|by|before)\s+(?:(?:mon|tue|wed|thu|fri|sat|sun)[a-z]*\.?,?\s+)?((?:jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?:st|nd|rd|th)?|\d{1,2}\/\d{1,2}(?:\/\d{2,4})?)\b\.?/i;
+  const m = text.match(re); if(!m) return null;
+  const d = findDate(m[2]); if(!d) return null;
+  return {iso: d.iso, rest: text.replace(m[0], ' ').replace(/\s{2,}/g,' ').trim()};
+}
 function findDate(str){
   let m;
   if((m = str.match(/\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+(\d{1,2})(?:st|nd|rd|th)?(?:,?\s+(\d{4}))?/i))){
@@ -2270,7 +2274,7 @@ const cleanTitle = t => t.replace(/\b(mon|tues?|wed|thur?s?|fri|sat|sun)[a-z]*\.
 function kindOf(text, col){
   const t = text.toLowerCase();
   if(/\b(test|exam|midterm|final|quiz|assessment)\b/.test(t) && !/\b(review|study guide|practice test|correction)/.test(t)) return 'test';
-  if(/\b(project|essay|paper|presentation|lab report)\b/.test(t)) return 'test';
+  if(/\b(project|essay|paper|presentation|lab report)\b/.test(t) && col!=='class') return 'test';
   if(col==='hw' || /^(hw|homework)\b|\bdue\b/i.test(text)) return 'hw';
   if(col==='class') return 'class';
   return 'unknown';
@@ -2317,7 +2321,8 @@ function smartParse(rawText, cellRows){
       return best && bd < 160 ? best.kind : null;
     };
     const whole = cells.map(c=>c.s).join(' ');
-    let date = findDate(whole);
+    const hasDateCol = header && header.some(hh=>hh.kind==='date');
+    let date = hasDateCol ? (()=>{ const dc = cells.filter(c=>colFor(c)==='date'); return dc.length ? findDate(dc.map(c=>c.s).join(' ')) : null; })() : findDate(whole);
     // "Week of 11/2" sets the week; later rows that start with Monday, Tue... get that week's dates
     if(date && /\bweek\b/i.test(whole) && cleanTitle(whole.replace(date.hit,'').replace(/week\s*(of)?/i,'')).length < 3){
       const d0 = parse(date.iso); week = addDays(date.iso, -((d0.getDay()+6)%7)); last = null; continue;
@@ -2347,13 +2352,23 @@ function smartParse(rawText, cellRows){
   const items = [];
   for(const r of out){
     for(const [col, raw] of Object.entries(r.parts)){
-      const pieces = col!=='hw' ? [raw] : raw.split(/\s*[;•]\s*|\s{2,}(?=\d+\.|[A-Z])/).filter(Boolean);
-      for(const piece of pieces){
-        const title = cleanTitle(piece);
-        if(title.length < 3 || NOTHING.test(title)) continue;
+      let pieces;
+      if(col!=='hw'){
+        // class work: pull out sentences that are tests/quizzes, keep the rest together as one class-work item
+        const sents = raw.split(/(?<=[.!?])\s+(?=[A-Z])/);
+        const tests = sents.filter(x=>kindOf(x,'class')==='test'), restS = sents.filter(x=>kindOf(x,'class')!=='test');
+        pieces = [...tests, ...(restS.length ? [restS.join(' ')] : [])];
+      } else pieces = raw.split(/\s*[;•]\s*|\s{2,}(?=\d+\.|[A-Z])/).filter(Boolean);
+      for(const piece0 of pieces){
+        const inText = dueInText(piece0);
+        const piece = inText ? inText.rest : piece0;
+        let title = cleanTitle(piece);
+        if(title.length < 3 || NOTHING.test(title) || !/[a-z]/i.test(title.replace(/\b(mon|tues?|wed|thur?s?|fri|sat|sun)[a-z]*\b/ig,''))) continue;
         let kind = kindOf(piece, col);
+        if(kind==='test') title = title.replace(/^(prepare|study|get ready)\s+for\s+(the\s+)?/i,'').replace(/^./, c=>c.toUpperCase());
+        const due = inText ? inText.iso : r.date;
         if(kind==='unknown' && sawHw && !header) kind = 'class';   // the schedule labels homework, so unlabeled lines are class work
-        items.push({title: title.slice(0,80), kind, col, type: kind==='class' ? 'other' : kind==='hw' ? (guessType(title)==='reading'?'reading':'homework') : guessType(title), due: r.date, class:null,
+        items.push({title: title.slice(0,80), kind, col, type: kind==='class' ? 'other' : kind==='hw' ? (guessType(title)==='reading'?'reading':'homework') : guessType(title), due, class:null,
           notes: kind==='class' ? 'In-class work' : ''});
       }
     }
